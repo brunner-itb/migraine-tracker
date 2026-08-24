@@ -1,0 +1,7 @@
+Todo in der Zukunft, nicht jetzt:
+
+1. ~~Bei Attacke, der löschen Button sollte ein Popup zur Bestätigung benötigen bevor gelöscht wird~~ (erledigt 2026-07-23)
+2. Ich hätte gerne noch App Einstellungen. Dort sollte man Dinge einstellen könnne, z.B. einen Export oder Import von Daten
+3. Falls der Standort nicht verfügbar ist möchte ich die Option, den Standort manuell eintragen zu können
+4. Das "+" unten rechts ist nicht zentriert, sondern zu weit unten in der Bubble
+5. Ich würde gespeicherte Attacken gerne editieren können

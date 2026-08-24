@@ -1,0 +1,44 @@
+@import "tailwindcss";
+
+/* ---------------------------------------------------------------------------
+   Globales Styling – "native App"-Gefühl (v. a. iOS/Safari)
+--------------------------------------------------------------------------- */
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background-color: #f9fafb;
+  color: #111827;
+  font-family:
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    "Helvetica Neue",
+    Arial,
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+
+  /* Kein blaues/graues Highlight beim Tippen auf iOS */
+  -webkit-tap-highlight-color: transparent;
+
+  /* Scroll-Bounce (Gummi-Effekt) am unteren Seitenrand deaktivieren */
+  overscroll-behavior-y: none;
+
+  /* Textmarkierung global deaktivieren … */
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* … außer dort, wo Text eingegeben oder kopiert werden soll */
+input,
+textarea,
+[contenteditable="true"] {
+  user-select: text;
+  -webkit-user-select: text;
+}
