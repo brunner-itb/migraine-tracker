@@ -69,6 +69,12 @@ export interface AttackDetailsFormData {
   /** Regeltag / Blutung. */
   isMenstruation: boolean;
 
+  /** Zwischenblutung (Blutung außerhalb der Periode). */
+  spotBleeding: boolean;
+
+  /** Unterleibskrämpfe. */
+  cramps: boolean;
+
   /** Pille vergessen / Einnahmefehler. */
   missedPill: boolean;
 
@@ -86,6 +92,8 @@ export interface AttackDetailsFormData {
 export interface InitialDetailsData {
   isPMS: boolean;
   isMenstruation: boolean;
+  spotBleeding: boolean;
+  cramps: boolean;
   missedPill: boolean;
   medications: Omit<MedicationEntry, 'id'>[];
   notes: string;
@@ -201,6 +209,10 @@ export function AttackDetailsForm({
   const [isMenstruation, setIsMenstruation] = useState(
     initialData?.isMenstruation ?? false,
   );
+  const [spotBleeding, setSpotBleeding] = useState(
+    initialData?.spotBleeding ?? false,
+  );
+  const [cramps, setCramps] = useState(initialData?.cramps ?? false);
   const [missedPill, setMissedPill] = useState(initialData?.missedPill ?? false);
   const [medications, setMedications] = useState<MedicationEntry[]>(() =>
     (initialData?.medications ?? []).map((m) => ({ ...m, id: createMedicationId() })),
@@ -252,7 +264,7 @@ export function AttackDetailsForm({
     e.preventDefault();
     if (!isValid) return; // Defensive – der Button ist ohnehin disabled.
 
-    onSubmit({ isPMS, isMenstruation, missedPill, medications, notes });
+    onSubmit({ isPMS, isMenstruation, spotBleeding, cramps, missedPill, medications, notes });
   }
 
   // --- Rendern ----------------------------------------------------------
@@ -286,6 +298,20 @@ export function AttackDetailsForm({
           description="Periode an diesem Tag"
           checked={isMenstruation}
           onChange={setIsMenstruation}
+        />
+        <ToggleRow
+          id="details-spot-bleeding"
+          label="Zwischenblutung"
+          description="Blutung außerhalb der Periode"
+          checked={spotBleeding}
+          onChange={setSpotBleeding}
+        />
+        <ToggleRow
+          id="details-cramps"
+          label="Unterleibskrämpfe"
+          description="Krämpfe im Unterleib"
+          checked={cramps}
+          onChange={setCramps}
         />
         <ToggleRow
           id="details-missed-pill"

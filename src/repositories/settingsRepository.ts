@@ -4,8 +4,8 @@
  * Kernfunktion: `resolveLocation()` – die EINSTELE für „woher kommen die
  * Koordinaten?" (Ziel: möglichst IMMER Koordinaten). Reihenfolge je nach
  * `locationMode` (nutzerwählbar, s. UserSettings):
- *  - 'fixed-first' (Default): fester Standort -> Live-GPS -> letzter bekannter
- *  - 'gps-first':             Live-GPS -> fester Standort -> letzter bekannter
+ *  - 'gps-first' (Default):   Live-GPS -> fester Standort -> letzter bekannter
+ *  - 'fixed-first':           fester Standort -> Live-GPS -> letzter bekannter
  * Live-GPS (5 s, blockiert nie) speichert seinen Erfolg als „zuletzt
  * bekannter Standort"; der ist in beiden Modi das letzte Netz.
  * undefined -> keine Wetterzeile, Backfill beim nächsten App-Start.
@@ -28,23 +28,43 @@ export interface ResolvedLocation extends SavedLocation {
 export class SettingsRepository {
   constructor(private readonly database: MigraineDB = db) {}
 
-  /** Liest die Settings-Zeile; legt sie bei Bedarf an (Default: kein Standort). */
+  /** Liest die Settings-Zeile; legt sie bei Bedarf an (Default: GPS zuerst). */
   async getSettings(): Promise<UserSettings> {
     const row = await this.database.settings.get(1);
-    if (row) return row;
-    const defaultRow: UserSettings = {
-      id: 1,
-      locationName: '',
-      latitude: null,
-      longitude: null,
-      lastKnownLatitude: null,
-      lastKnownLongitude: null,
-      lastKnownAt: null,
-      locationMode: 'fixed-first',
-      updatedAt: new Date().toISOString(),
-    };
-    await this.database.settings.put(defaultRow);
-    return defaultRow;
+    if (row === undefined) {
+      const defaultRow: UserSettings = {
+        id: 1,
+        locationName: '',
+        latitude: null,
+        longitude: null,
+        lastKnownLatitude: null,
+        lastKnownLongitude: null,
+        lastKnownAt: null,
+        locationMode: 'gps-first',
+        updatedAt: new Date().toISOString(),
+      };
+      await this.database.settings.put(defaultRow);
+      return defaultRow;
+    }
+    // Einmal-Migration: Der alte Default war 'fixed-first'. Ohne gesetzten
+    // festen Standort verhalten sich beide Modi identisch (GPS zuerst),
+    // daher übernehmen solche Zeilen den neuen Default 'gps-first' – die UI
+    // spiegelt so das tatsächliche Verhalten. Zeilen MIT festem Standort
+    // bleiben unverändert (bewusste Nutzerwahl).
+    if (
+      row.locationMode === 'fixed-first' &&
+      row.latitude === null &&
+      row.longitude === null
+    ) {
+      const migrated: UserSettings = {
+        ...row,
+        locationMode: 'gps-first',
+        updatedAt: new Date().toISOString(),
+      };
+      await this.database.settings.put(migrated);
+      return migrated;
+    }
+    return row;
   }
 
   /** Fester Standort oder null (-> GPS-Fallback). */
@@ -136,7 +156,7 @@ export class SettingsRepository {
     if (s.locationMode === 'gps-first') {
       return (await liveGps()) ?? fixed ?? lastKnown;
     }
-    // Default: 'fixed-first'
+    // 'fixed-first'
     return fixed ?? (await liveGps()) ?? lastKnown;
   }
 }

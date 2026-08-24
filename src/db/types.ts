@@ -52,6 +52,8 @@ export interface MigraineAttack {
 export type CycleEventType =
   | 'menstruation' // Periode, kann mehrere Tage umfassen
   | 'pms'          // PMS-Phase, kann mehrere Tage umfassen
+  | 'spotting'     // Zwischenblutung (Blutung außerhalb der Periode)
+  | 'cramps'       // Unterleibskrämpfe
   | 'ovulation'    // Eisprung / fruchtbare Phase
   | 'other';       // z. B. "Pille vergessen", "Pille pausiert"
 
@@ -217,7 +219,7 @@ export interface UserSettings {
   lastKnownLongitude: number | null;
   lastKnownAt: string | null;
 
-  /** Bevorzugte Reihenfolge: 'fixed-first' (Default) | 'gps-first'. */
+  /** Bevorzugte Reihenfolge: 'gps-first' (Default) | 'fixed-first'. */
   locationMode: LocationMode;
 
   updatedAt: string;

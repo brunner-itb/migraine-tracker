@@ -79,6 +79,7 @@ function toNewAttack(
  *
  * Zyklus-Toggles -> CycleEvent-Zeilen:
  *  - Nur der Attacken-Tag ist bekannt -> Eintages-Events (endDate: null).
+ *  - `spotBleeding` -> type 'spotting', `cramps` -> type 'cramps'.
  *  - `missedPill` -> type 'other' mit Beschreibung in notes.
  *
  * Medikamente:
@@ -116,6 +117,24 @@ async function persistAttackDetails(
       if (details.isPMS) {
         cycleEvents.push({
           type: 'pms',
+          date: day,
+          endDate: null,
+          notes: '',
+          createdAt: now,
+        });
+      }
+      if (details.spotBleeding) {
+        cycleEvents.push({
+          type: 'spotting',
+          date: day,
+          endDate: null,
+          notes: '',
+          createdAt: now,
+        });
+      }
+      if (details.cramps) {
+        cycleEvents.push({
+          type: 'cramps',
           date: day,
           endDate: null,
           notes: '',
@@ -229,6 +248,8 @@ export function AddAttackWizard({
       setDetailsInitial({
         isPMS: cycleEvents.some((e) => e.type === 'pms' && e.endDate === null),
         isMenstruation: cycleEvents.some((e) => e.type === 'menstruation' && e.endDate === null),
+        spotBleeding: cycleEvents.some((e) => e.type === 'spotting' && e.endDate === null),
+        cramps: cycleEvents.some((e) => e.type === 'cramps' && e.endDate === null),
         missedPill: cycleEvents.some(
           (e) => e.type === 'other' && e.endDate === null && e.notes === MISSED_PILL_NOTE,
         ),
@@ -332,6 +353,8 @@ export function AddAttackWizard({
       notes: details.notes,
       isPMS: details.isPMS,
       isMenstruation: details.isMenstruation,
+      spotBleeding: details.spotBleeding,
+      cramps: details.cramps,
       missedPill: details.missedPill,
       medications: details.medications.map((m) => ({
         name: m.name.trim(),

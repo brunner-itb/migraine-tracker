@@ -60,6 +60,8 @@ export async function exportMonthlyReport(
     const eventsStrings = attackCycleEvents.map(e => {
       if (e.type === 'menstruation') return 'Menstruation';
       if (e.type === 'pms') return 'PMS';
+      if (e.type === 'spotting') return 'Zwischenblutung';
+      if (e.type === 'cramps') return 'Unterleibskrämpfe';
       if (e.type === 'other' && /pille/i.test(e.notes)) return 'Pille vergessen';
       return e.notes || 'Sonstiges';
     });

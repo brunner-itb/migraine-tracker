@@ -60,6 +60,8 @@ export interface UpdatedMedication {
 export type UpdatedAttack = Omit<NewAttack, 'type'> & {
   isPMS: boolean;
   isMenstruation: boolean;
+  spotBleeding: boolean;
+  cramps: boolean;
   missedPill: boolean;
   medications: UpdatedMedication[];
 };
@@ -279,6 +281,24 @@ export class AttackRepository {
         if (data.isPMS) {
           cycleEvents.push({
             type: 'pms',
+            date: newDay,
+            endDate: null,
+            notes: '',
+            createdAt: now,
+          });
+        }
+        if (data.spotBleeding) {
+          cycleEvents.push({
+            type: 'spotting',
+            date: newDay,
+            endDate: null,
+            notes: '',
+            createdAt: now,
+          });
+        }
+        if (data.cramps) {
+          cycleEvents.push({
+            type: 'cramps',
             date: newDay,
             endDate: null,
             notes: '',
