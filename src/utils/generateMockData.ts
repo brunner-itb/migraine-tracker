@@ -239,6 +239,7 @@ export async function seedMockData(): Promise<SeedResult> {
         painLevel: randInt(3, 9),
         type,
         notes: pick(ATTACK_NOTES),
+        locationName: '',
         weatherId: null,
         createdAt: nowIso,
         updatedAt: nowIso,

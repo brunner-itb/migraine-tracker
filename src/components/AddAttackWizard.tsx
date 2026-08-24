@@ -13,7 +13,7 @@ import {
 } from '../repositories/attackRepository';
 import { settingsRepository } from '../repositories/settingsRepository';
 import { db } from '../db/database';
-import type { CycleEvent, MigraineAttack } from '../db/types';
+import type { AttackLocation, CycleEvent, MigraineAttack } from '../db/types';
 
 /**
  * AddAttackWizard – Container-Komponente (Schritt 6.3):
@@ -23,12 +23,14 @@ import type { CycleEvent, MigraineAttack } from '../db/types';
  *  - Schritt-State (1 = Grunddaten, 2 = Details) + Daten-Sammlung:
  *      Schritt 1 liefert BaseAttackFormData (wird hier zwischengespeichert),
  *      Schritt 2 liefert AttackDetailsFormData direkt per onSubmit.
- *  - Standortauflösung (Settings -> GPS), blockiert nie:
- *    settingsRepository.resolveLocation() liefert je nach locationMode
- *    festen Standort, Live-GPS (5 s-Timeout) oder den zuletzt bekannten
- *    Standort. `undefined` nur, wenn KEINE Quelle verfügbar ist.
- *    (Repository-Konvention: ohne Koordinaten wird die Attacke ohne
- *    Wetterzeile gespeichert – Retry beim nächsten App-Start.)
+ *  - Standortauflösung, blockiert nie:
+ *    Custom-Standort aus dem Formular (LocationPicker, Schritt 1) hat
+ *    Vorrang – z. B. nachträgliche Erfassung für eine Attacke, die an
+ *    einem anderen Ort stattfand. Sonst settingsRepository.resolveLocation():
+ *    je nach locationMode fester Standort, Live-GPS (5 s-Timeout) oder der
+ *    zuletzt bekannte Standort. `undefined` nur, wenn KEINE Quelle
+ *    verfügbar ist. (Repository-Konvention: ohne Koordinaten wird die
+ *    Attacke ohne Wetterzeile gespeichert – Retry beim nächsten Start.)
  *  - Persistenz in zwei Stufen (beide offline-first, lokal):
  *      1) attackRepository.addAttack()  -> Attacke (+ Wetter-Planung)
  *      2) persistAttackDetails()        -> CycleEvents + MedicationIntakes
@@ -53,10 +55,12 @@ import type { CycleEvent, MigraineAttack } from '../db/types';
  *    'migraine'. TODO (folgender Schritt): Attackentyp in Schritt 1
  *    erfassen ('migraine' | 'tension' | 'other').
  *  - `notes`: Freitext aus Schritt 2 (Trigger/Aura/Übelkeit).
+ *  - `locationName`: Anzeigename des Custom-Standorts ('' = automatisch).
  */
 function toNewAttack(
   base: BaseAttackFormData,
   details: AttackDetailsFormData,
+  locationName: string,
 ): NewAttack {
   return {
     startTime: base.startTime,
@@ -64,6 +68,7 @@ function toNewAttack(
     painLevel: base.painLevel,
     type: 'migraine',
     notes: details.notes,
+    locationName,
   };
 }
 
@@ -203,8 +208,10 @@ export interface AddAttackWizardProps {
    * Wenn gesetzt, läuft der Wizard im Edit-Mode: Die Formulare werden mit
    * den Daten dieser Attacke befüllt und "Speichern" aktualisiert die
    * bestehende Zeile (attackRepository.updateAttack) statt einer neuen
-   * anzulegen. GPS wird im Edit-Mode nicht abgefragt (die Wetter-Zeile
-   * existiert bereits bzw. wird bei Startzeit-Wechsel per Retry erneuert).
+   * anzulegen. GPS wird im Edit-Mode nicht automatisch abgefragt (die
+   * Wetter-Zeile existiert bereits bzw. wird bei Startzeit-Wechsel per
+   * Retry erneuert). Ein manuell geänderter Custom-Standort löst dagegen
+   * einen Hintergrund-Re-Fetch der Wetterzeile aus.
    */
   initialAttack?: MigraineAttack | null;
 }
@@ -225,6 +232,15 @@ export function AddAttackWizard({
   // Edit-Mode: Initialdaten für Schritt 2 (Intakes + Zyklus-Events) laden.
   const [detailsInitial, setDetailsInitial] = useState<InitialDetailsData | null>(null);
 
+  // Edit-Mode: rekonstruierter Custom-Standort (Name aus der Attacke,
+  // Koordinaten aus der verknüpften Wetterzeile). null = automatisch.
+  const [initialLocation, setInitialLocation] = useState<AttackLocation | null>(null);
+
+  // Edit-Mode: true, sobald alle Initialdaten (Details + Wetterzeile)
+  // geladen sind – bis dahin wird KEIN Formular gerendert (sonst würde
+  // der Standort-Picker vor der Rekonstruktion mit null starten).
+  const [initialDataReady, setInitialDataReady] = useState(!isEditMode);
+
   // Ref-Guard gegen Doppel-Submit: Der State-Update rendert asynchron,
   // ein schneller Doppelklick würde sonst zweimal durchlaufen.
   const submittingRef = useRef(false);
@@ -238,9 +254,10 @@ export function AddAttackWizard({
     const day = initialAttack.startTime.slice(0, 10);
     let cancelled = false;
     void (async () => {
-      const [intakes, cycleEvents] = await Promise.all([
+      const [intakes, cycleEvents, weatherRow] = await Promise.all([
         db.medicationIntakes.where('attackId').equals(attackId).toArray(),
         db.cycleEvents.where('date').equals(day).toArray(),
+        db.weatherData.where('attackId').equals(attackId).first(),
       ]);
       const medIds = intakes.map((i) => i.medicationId).filter((id): id is number => id !== undefined);
       const medications = medIds.length > 0 ? await db.medications.bulkGet(medIds) : [];
@@ -266,6 +283,17 @@ export function AddAttackWizard({
           .filter((m) => m.name !== ''),
         notes: initialAttack.notes,
       });
+      // Custom-Standort rekonstruieren: Name aus der Attacke, Koordinaten
+      // aus der 1:1-Wetterzeile. Leerer Name = automatisch (null) – die
+      // Wetterzeile trägt dann die automatisch ermittelten Koordinaten.
+      if (initialAttack.locationName !== '' && weatherRow !== undefined) {
+        setInitialLocation({
+          name: initialAttack.locationName,
+          latitude: weatherRow.latitude,
+          longitude: weatherRow.longitude,
+        });
+      }
+      setInitialDataReady(true);
     })();
     return () => {
       cancelled = true;
@@ -298,24 +326,32 @@ export function AddAttackWizard({
 
     try {
       if (isEditMode && initialAttack !== null && initialAttack.id !== undefined) {
-        // Edit-Mode: bestehende Zeile + Detail-Daten aktualisieren (kein GPS).
+        // Edit-Mode: bestehende Zeile + Detail-Daten aktualisieren.
+        // Custom-Standort: neue Koordinaten nur bei echter Änderung
+        // (sonst unnötiger Wetter-Re-Fetch), s. toUpdatedAttack().
         await attackRepository.updateAttack(
           initialAttack.id,
-          toUpdatedAttack(baseData, details),
+          toUpdatedAttack(baseData, details, initialLocation),
         );
       } else {
-        // 1) Standort auflösen – Reihenfolge je nach locationMode
-        //    (s. settingsRepository). 'fixed-first' + fester Standort =
-        //    KEIN GPS-Prompt. Blockiert nie; undefined nur ohne jede Quelle
-        //    (dann: Attacke ohne Wetterzeile, Backfill beim nächsten Start).
-        const loc = await settingsRepository.resolveLocation();
+        // 1) Standort bestimmen: Custom-Standort aus dem Formular hat
+        //    Vorrang (z. B. nachträgliche Erfassung für einen anderen
+        //    Ort), sonst automatische Auflösung – Reihenfolge je nach
+        //    locationMode (s. settingsRepository). Blockiert nie;
+        //    undefined nur ohne jede Quelle (dann: Attacke ohne
+        //    Wetterzeile, Backfill beim nächsten Start).
+        const custom = baseData.location;
+        const loc =
+          custom !== null
+            ? { name: custom.name, latitude: custom.latitude, longitude: custom.longitude }
+            : await settingsRepository.resolveLocation();
         const coords = loc
           ? { latitude: loc.latitude, longitude: loc.longitude }
           : undefined;
 
         // 2) Attacke (+ Wetter-Planung) offline-first persistieren.
         const saved = await attackRepository.addAttack(
-          toNewAttack(baseData, details),
+          toNewAttack(baseData, details, custom?.name ?? ''),
           coords,
         );
         if (saved.id === undefined) {
@@ -345,12 +381,30 @@ export function AddAttackWizard({
   function toUpdatedAttack(
     base: BaseAttackFormData,
     details: AttackDetailsFormData,
+    initialLoc: AttackLocation | null,
   ): UpdatedAttack {
+    const custom = base.location;
+    // Standort geändert, wenn sich Existenz/Name/Koordinaten gegenüber
+    // dem geladenen Zustand unterscheiden. Nur dann bekommt das
+    // Repository neue Koordinaten (-> Wetter-Re-Fetch); "entfernt" wird
+    // nur der Name geleert (Wetterzeile bleibt, kein GPS-Prompt).
+    const locationChanged =
+      (custom === null) !== (initialLoc === null) ||
+      (custom !== null &&
+        initialLoc !== null &&
+        (custom.name !== initialLoc.name ||
+          custom.latitude !== initialLoc.latitude ||
+          custom.longitude !== initialLoc.longitude));
     return {
       startTime: base.startTime,
       endTime: base.endTime ?? null,
       painLevel: base.painLevel,
       notes: details.notes,
+      locationName: custom?.name ?? '',
+      locationCoords:
+        locationChanged && custom !== null
+          ? { latitude: custom.latitude, longitude: custom.longitude }
+          : undefined,
       isPMS: details.isPMS,
       isMenstruation: details.isMenstruation,
       spotBleeding: details.spotBleeding,
@@ -376,7 +430,11 @@ export function AddAttackWizard({
           : 'Schritt 2 von 2 · Details'}
       </p>
 
-      {step === 1 ? (
+      {isEditMode && !initialDataReady ? (
+        <p className="mt-10 text-center text-sm text-gray-500">
+          Daten werden geladen …
+        </p>
+      ) : step === 1 ? (
         <AttackForm
           onNext={handleBaseNext}
           title={isEditMode ? 'Attacke bearbeiten' : 'Neue Attacke erfassen'}
@@ -384,6 +442,7 @@ export function AddAttackWizard({
           initialIsEnded={initialAttack?.endTime != null}
           initialEndTime={initialAttack?.endTime ?? undefined}
           initialPainLevel={initialAttack?.painLevel}
+          initialLocation={initialLocation}
         />
       ) : isEditMode && detailsInitial === null ? (
         <p className="mt-10 text-center text-sm text-gray-500">

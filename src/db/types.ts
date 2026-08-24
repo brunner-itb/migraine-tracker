@@ -14,6 +14,21 @@
 /** Klassifikation der Attacke (hilft beim Filtern und in der Auswertung) */
 export type AttackType = 'migraine' | 'tension' | 'other';
 
+/**
+ * Manuell gesetzter Standort einer Attacke (z. B. nachträgliche Erfassung
+ * für eine Attacke, die an einem anderen Ort stattfand – Urlaub, Heimatstadt).
+ * `null`/abwesend = Standort wird automatisch aus Einstellungen/GPS aufgelöst.
+ *
+ * Bewusst ein eigenes Interface (statt `SavedLocation` aus dem Repository):
+ * Die UI-Schicht soll keine Repository-Importe brauchen; strukturell sind
+ * beide Typen identisch ({ name, latitude, longitude }).
+ */
+export interface AttackLocation {
+  name: string;
+  latitude: number;
+  longitude: number;
+}
+
 export interface MigraineAttack {
   /** Auto-increment-ID (Dexie). Existiert erst nach dem Insert. */
   id?: number;
@@ -32,6 +47,14 @@ export interface MigraineAttack {
 
   /** Freitext: Aura, Übelkeit, Trigger, Schlafqualität o. Ä. */
   notes: string;
+
+  /**
+   * Anzeigename eines manuell gesetzten Standorts (z. B. 'Mallorca, Spanien').
+   * '' = kein Custom-Standort (Standort kommt automatisch aus Einstellungen/GPS).
+   * Die zugehörigen Koordinaten liegen in der 1:1-Wetterzeile (weatherId) –
+   * dort ist der Ort, für den die Wetterdaten abgerufen wurden.
+   */
+  locationName: string;
 
   /** FK -> WeatherData.id (1:1). Wird gesetzt, sobald der Abruf erledigt ist. */
   weatherId: number | null;

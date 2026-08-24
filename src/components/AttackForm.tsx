@@ -1,4 +1,6 @@
 import { useState, type FormEvent } from 'react';
+import type { AttackLocation } from '../db/types';
+import { LocationPicker } from './LocationPicker';
 
 /**
  * AttackForm – Basis-Formular für die Hauptdaten einer Attacke (Schritt 6.1).
@@ -15,6 +17,9 @@ import { useState, type FormEvent } from 'react';
  *  - Endzeitpunkt: erst sichtbar, wenn "Attacke ist bereits beendet" aktiv
  *    ist. Solange die Checkbox deaktiviert ist, bleibt `endTime` im
  *    Form-State undefined (≙ offene/laufende Attacke).
+ *  - Standort (optional): LocationPicker mit Progressive Disclosure –
+ *    Default "Automatisch (GPS / Einstellungen)", optionaler Custom-Ort
+ *    per Suche oder GPS (wichtig für nachträgliche Erfassungen).
  *  - Schmerzstärke: interaktive Skala 1–10 (nummerierte Buttons,
  *    farblich von grün nach rot), Auswahl ist Pflicht.
  *
@@ -47,6 +52,13 @@ export interface BaseAttackFormData {
 
   /** Schmerzstärke zum Start: Ganzzahl 1–10. */
   painLevel: number;
+
+  /**
+   * Optionaler, manuell gesetzter Standort (z. B. nachträgliche Erfassung
+   * für eine Attacke an einem anderen Ort). null = automatisch
+   * (Einstellungen/GPS – die Auflösung passiert im Wizard).
+   */
+  location: AttackLocation | null;
 }
 
 export interface AttackFormProps {
@@ -71,6 +83,12 @@ export interface AttackFormProps {
 
   /** Voreingestellte Schmerzstärke (Edit-Mode). */
   initialPainLevel?: number;
+
+  /**
+   * Voreingestellter Custom-Standort (Edit-Mode). null/undefined =
+   * automatisch (kein Custom-Standort gesetzt).
+   */
+  initialLocation?: AttackLocation | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -133,6 +151,7 @@ export function AttackForm({
   initialIsEnded = false,
   initialEndTime,
   initialPainLevel,
+  initialLocation = null,
 }: AttackFormProps) {
   // --- Form-State ----------------------------------------------------------
   // startTime: direkt als datetime-local-String gehalten (das ist zugleich
@@ -154,6 +173,11 @@ export function AttackForm({
 
   // painLevel: 0 = bewusst noch nicht gewählt (Pflichtfeld).
   const [painLevel, setPainLevel] = useState(initialPainLevel ?? 0);
+
+  // location: null = automatisch (Einstellungen/GPS). Edit-Mode: wird aus
+  // initialLocation befüllt (Name aus der Attacke, Koordinaten aus der
+  // verknüpften Wetterzeile – Rekonstruktion passiert im Wizard).
+  const [location, setLocation] = useState<AttackLocation | null>(initialLocation);
 
   // --- Validierung ----------------------------------------------------------
 
@@ -189,6 +213,7 @@ export function AttackForm({
       startTime,
       endTime: isEnded ? endTime : undefined,
       painLevel,
+      location,
     });
   }
 
@@ -262,6 +287,11 @@ export function AttackForm({
           </div>
         )}
       </section>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Standort (optional, Progressive Disclosure)                        */}
+      {/* ------------------------------------------------------------------ */}
+      <LocationPicker value={location} onChange={setLocation} />
 
       {/* ------------------------------------------------------------------ */}
       {/* Schmerzstärke (Skala 1–10)                                          */}

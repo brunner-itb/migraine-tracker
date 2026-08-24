@@ -64,6 +64,14 @@ export type UpdatedAttack = Omit<NewAttack, 'type'> & {
   cramps: boolean;
   missedPill: boolean;
   medications: UpdatedMedication[];
+  /**
+   * Neue Custom-Standort-Koordinaten – nur setzen, wenn sich der manuell
+   * gesetzte Standort geändert hat. Vorhanden => Wetter-Zeile wird auf
+   * diese Koordinaten + Timestamp umgestellt (oder neu angelegt) und im
+   * Hintergrund neu abgerufen. Abwesend => unverändertes Wetterverhalten
+   * (Startzeit-Wechsel -> Retry beim nächsten App-Start).
+   */
+  locationCoords?: Coordinates;
 };
 
 /**
@@ -156,7 +164,7 @@ export class AttackRepository {
    *
    * Strategie (eine atomare Transaction):
    *  1) Attacken-Zeile wird aktualisiert (startTime, endTime, painLevel,
-   *     notes, updatedAt). Der Typ bleibt unverändert.
+   *     notes, locationName, updatedAt). Der Typ bleibt unverändert.
    *  2) Medikamente: Alle Intakes der Attacke werden gelöscht und aus dem
    *     Form-State neu angelegt (Katalog wie bei addAttack per Name
    *     wiederverwendet/angelegt).
@@ -167,10 +175,15 @@ export class AttackRepository {
    *     Hinweis: Teilen sich zwei Attacken denselben Tag, teilen sie auch
    *     die Zyklus-Events des Tags – das zuletzt gespeicherte Formular
    *     gewinnt (bewusste Tag-Semantik, s. CycleEvent in db/types.ts).
-   *  4) Wetter: Hat sich die Startzeit geändert, wird die vorhandene
-   *     Wetter-Zeile auf 'error' gesetzt (mit neuem Timestamp), damit der
-   *     Retry beim nächsten App-Start die Daten mit den gespeicherten
-   *     Koordinaten neu abruft.
+   *  4) Wetter:
+   *     a) locationCoords vorhanden (Custom-Standort gesetzt/geändert):
+   *        Wetter-Zeile wird auf die neuen Koordinaten + Timestamp
+   *        umgestellt (Status 'pending') oder neu angelegt; danach
+   *        Hintergrund-Re-Fetch (blockiert nie, Fehler -> Status 'error').
+   *     b) Sonst: Hat sich die Startzeit geändert, wird die vorhandene
+   *        Wetter-Zeile auf 'error' gesetzt (mit neuem Timestamp), damit
+   *        der Retry beim nächsten App-Start die Daten mit den
+   *        gespeicherten Koordinaten neu abruft.
    */
   async updateAttack(
     attackId: number,
@@ -186,6 +199,7 @@ export class AttackRepository {
       painLevel: data.painLevel,
       type: oldAttack.type,
       notes: data.notes,
+      locationName: data.locationName,
     });
     for (const med of data.medications) {
       if (med.name.trim() === '') {
@@ -199,7 +213,7 @@ export class AttackRepository {
     // Betroffene Tage, deren Wizard-Zyklus-Events zurückgesetzt werden.
     const daysToReset = oldDay === newDay ? [oldDay] : [oldDay, newDay];
 
-    return this.database.transaction(
+    const result = await this.database.transaction(
       'rw',
       [
         this.database.attacks,
@@ -318,8 +332,37 @@ export class AttackRepository {
           await this.database.cycleEvents.bulkAdd(cycleEvents);
         }
 
-        // 4) Wetter-Zeile bei Startzeit-Wechsel neu abholen lassen
-        if (oldAttack.weatherId !== null && data.startTime !== oldAttack.startTime) {
+        // 4) Wetter-Zeile
+        let weatherIdToRefresh: number | null = null;
+        if (data.locationCoords !== undefined) {
+          // a) Custom-Standort gesetzt/geändert: Zeile umstellen (oder neu
+          //    anlegen) + Status 'pending' -> Re-Fetch nach der Transaktion.
+          const existing = await this.database.weatherData
+            .where('attackId')
+            .equals(attackId)
+            .first();
+          if (existing?.id !== undefined) {
+            await this.database.weatherData.update(existing.id, {
+              latitude: data.locationCoords.latitude,
+              longitude: data.locationCoords.longitude,
+              timestamp: data.startTime,
+              status: 'pending',
+              fetchedAt: null,
+            });
+            weatherIdToRefresh = existing.id;
+          } else {
+            const newWeatherId = await this.database.weatherData.add(
+              pendingWeatherRow(attackId, data.startTime, data.locationCoords),
+            );
+            await this.database.attacks.update(attackId, { weatherId: newWeatherId });
+            weatherIdToRefresh = newWeatherId;
+          }
+        } else if (
+          oldAttack.weatherId !== null &&
+          data.startTime !== oldAttack.startTime
+        ) {
+          // b) Startzeit-Wechsel ohne Standortwechsel: Retry beim nächsten
+          //    App-Start (mit den gespeicherten Koordinaten).
           await this.database.weatherData.update(oldAttack.weatherId, {
             timestamp: data.startTime,
             status: 'error',
@@ -328,15 +371,31 @@ export class AttackRepository {
         }
 
         return {
-          ...oldAttack,
-          startTime: data.startTime,
-          endTime: data.endTime,
-          painLevel: data.painLevel,
-          notes: data.notes,
-          updatedAt: now,
+          attack: {
+            ...oldAttack,
+            startTime: data.startTime,
+            endTime: data.endTime,
+            painLevel: data.painLevel,
+            notes: data.notes,
+            locationName: data.locationName,
+            updatedAt: now,
+          },
+          weatherIdToRefresh,
         };
       },
     );
+
+    // 5) Hintergrund-Re-Fetch für den geänderten Custom-Standort –
+    //    blockiert die UI nicht, Fehler landen im Status ('error').
+    if (result.weatherIdToRefresh !== null && data.locationCoords !== undefined) {
+      void this.refreshWeather(result.weatherIdToRefresh, data.locationCoords).catch(
+        (err) => {
+          console.warn('[attackRepository] Unerwarteter Wetterfehler:', err);
+        },
+      );
+    }
+
+    return result.attack;
   }
 
   /**

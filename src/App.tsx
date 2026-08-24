@@ -231,6 +231,31 @@ export default function App() {
                         läuft noch
                       </span>
                     )}
+                    {attack.locationName !== '' && (
+                      <span className="inline-flex max-w-full items-center gap-1 rounded-full bg-indigo-100 px-2.5 py-0.5 text-xs font-medium text-indigo-800">
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          strokeWidth={2}
+                          stroke="currentColor"
+                          className="h-3 w-3 shrink-0"
+                          aria-hidden="true"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z"
+                          />
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z"
+                          />
+                        </svg>
+                        <span className="truncate">{attack.locationName}</span>
+                      </span>
+                    )}
                   </div>
                   {attack.notes && (
                     <p className="mt-2 line-clamp-2 text-xs text-gray-600">

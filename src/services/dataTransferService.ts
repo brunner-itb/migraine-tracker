@@ -203,7 +203,13 @@ export async function importDataExport(
       ]);
       // bulkPut statt bulkAdd: Zeilen haben bereits IDs (Auto-Increment
       // setzt nach dem Import auf max(id)+1 fort, keine Kollisionen).
-      if (attacks.length > 0) await database.attacks.bulkPut(attacks);
+      // Normalisierung: ältere Exports kennen locationName noch nicht ->
+      // Default '' (= automatisch), damit alle Zeilen das Feld tragen.
+      if (attacks.length > 0) {
+        await database.attacks.bulkPut(
+          attacks.map((a) => ({ ...a, locationName: a.locationName ?? '' })),
+        );
+      }
       if (cycleEvents.length > 0) await database.cycleEvents.bulkPut(cycleEvents);
       if (medications.length > 0) await database.medications.bulkPut(medications);
       if (medicationIntakes.length > 0) {

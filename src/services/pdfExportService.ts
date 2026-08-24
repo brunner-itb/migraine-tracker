@@ -72,6 +72,7 @@ export async function exportMonthlyReport(
       endStr,
       attack.painLevel.toString(),
       medsStrings.length > 0 ? medsStrings.join('; ') : '–',
+      attack.locationName !== '' ? attack.locationName : '–',
       eventsStrings.length > 0 ? eventsStrings.join(', ') : '–'
     ];
   });
@@ -91,19 +92,20 @@ export async function exportMonthlyReport(
 
   // Tabelle
   autoTable(doc, {
-    head: [['Datum', 'Start', 'Ende', 'Schmerz', 'Medikation', 'Begleitumstände']],
+    head: [['Datum', 'Start', 'Ende', 'Schmerz', 'Medikation', 'Standort', 'Begleitumstände']],
     body: tableRows,
     startY: 38,
     theme: 'grid',
     styles: { font: 'helvetica', fontSize: 9, cellPadding: 2 },
     headStyles: { fillColor: [31, 56, 100] },
     columnStyles: {
-      0: { cellWidth: 22 },
-      1: { cellWidth: 15, halign: 'center' },
-      2: { cellWidth: 18, halign: 'center' },
-      3: { cellWidth: 16, halign: 'center' },
-      4: { cellWidth: 65 },
-      5: { cellWidth: 46 }
+      0: { cellWidth: 20 },
+      1: { cellWidth: 13, halign: 'center' },
+      2: { cellWidth: 15, halign: 'center' },
+      3: { cellWidth: 13, halign: 'center' },
+      4: { cellWidth: 52 },
+      5: { cellWidth: 32 },
+      6: { cellWidth: 37 }
     }
   });
 
