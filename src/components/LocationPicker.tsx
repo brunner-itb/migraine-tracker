@@ -17,7 +17,7 @@
  * `AttackLocation | null`. Keine DB-/Repository-Zugriffe.
  */
 
-import { useState, type FormEvent } from 'react';
+import { useState } from 'react';
 import type { AttackLocation } from '../db/types';
 import { getPositionWithTimeout, GPS_TIMEOUT_MS } from '../services/locationService';
 import { searchLocations, type GeocodingResult } from '../services/geocodingService';
@@ -75,8 +75,7 @@ export function LocationPicker({ value, onChange }: LocationPickerProps) {
   };
 
   /** Ortssuche ausführen (Enter oder Button). */
-  const runSearch = async (e?: FormEvent) => {
-    e?.preventDefault();
+  const runSearch = async () => {
     const q = query.trim();
     if (q.length === 0 || isSearching) return;
     setIsSearching(true);
@@ -174,22 +173,35 @@ export function LocationPicker({ value, onChange }: LocationPickerProps) {
       {expanded && (
         // --- Editor: Suche + GPS ------------------------------------------
         <div className="space-y-2.5 border-t border-slate-100 pt-2.5">
-          <form onSubmit={runSearch} className="flex gap-2">
+          {/* Kein <form> hier: Der Picker sitzt im AttackForm-<form> und
+              verschachtelte <form>-Elemente sind ungültiges HTML – der
+              Submit-Event des inneren Forms würde per Bubbling auch das
+              äußere Formular auslösen (Wizard springt vorzeitig weiter).
+              Enter wird stattdessen am Input behandelt (preventDefault,
+              sonst würde das äußere Formular implizit gesubmitet). */}
+          <div className="flex gap-2">
             <input
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  void runSearch();
+                }
+              }}
               placeholder="Ort oder Stadt suchen…"
               className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
             />
             <button
-              type="submit"
+              type="button"
+              onClick={() => void runSearch()}
               disabled={isSearching || query.trim().length === 0}
               className="rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white active:bg-indigo-700 disabled:opacity-50"
             >
               {isSearching ? 'Suche…' : 'Suchen'}
             </button>
-          </form>
+          </div>
 
           {searchError && <p className="text-xs text-rose-600">{searchError}</p>}
 
