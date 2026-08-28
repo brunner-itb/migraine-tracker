@@ -18,12 +18,13 @@ import type {
   Medication,
   MedicationIntake,
   MigraineAttack,
+  PainEntry,
   UserSettings,
   WeatherData,
 } from '../db/types';
 
 /** Export-Formatversion (für zukünftige Kompatibilität). */
-export const EXPORT_FORMAT_VERSION = 1;
+export const EXPORT_FORMAT_VERSION = 2;
 
 /** App-Kennung im Export (Schutz vor falschen Dateien). */
 const APP_ID = 'migraine-tracker';
@@ -34,6 +35,7 @@ const TABLE_KEYS = [
   'cycleEvents',
   'medications',
   'medicationIntakes',
+  'painEntries',
   'weatherData',
   'settings',
 ] as const;
@@ -44,6 +46,7 @@ export interface ExportData {
   cycleEvents: CycleEvent[];
   medications: Medication[];
   medicationIntakes: MedicationIntake[];
+  painEntries: PainEntry[];
   weatherData: WeatherData[];
   settings: UserSettings[];
 }
@@ -63,6 +66,7 @@ export interface ImportResult {
   cycleEvents: number;
   medications: number;
   medicationIntakes: number;
+  painEntries: number;
   weatherData: number;
   settings: number;
 }
@@ -78,12 +82,13 @@ export interface ImportResult {
 export async function createDataExport(
   database: MigraineDB = db,
 ): Promise<DataExport> {
-  const [attacks, cycleEvents, medications, medicationIntakes, weatherData, settings] =
+  const [attacks, cycleEvents, medications, medicationIntakes, painEntries, weatherData, settings] =
     await Promise.all([
       database.attacks.toArray(),
       database.cycleEvents.toArray(),
       database.medications.toArray(),
       database.medicationIntakes.toArray(),
+      database.painEntries.toArray(),
       database.weatherData.toArray(),
       database.settings.toArray(),
     ]);
@@ -91,7 +96,7 @@ export async function createDataExport(
     app: APP_ID,
     version: EXPORT_FORMAT_VERSION,
     exportedAt: new Date().toISOString(),
-    data: { attacks, cycleEvents, medications, medicationIntakes, weatherData, settings },
+    data: { attacks, cycleEvents, medications, medicationIntakes, painEntries, weatherData, settings },
   };
 }
 
@@ -161,7 +166,15 @@ export function parseDataExport(json: string): DataExport {
     throw new Error('Ungültige Export-Datei: Daten-Block fehlt.');
   }
   const dataObj = data as Record<string, unknown>;
+  // painEntries ist optional: Exports vor Version 2 kennen die Tabelle
+  // noch nicht und bleiben importierbar (werden leer übernommen).
   for (const key of TABLE_KEYS) {
+    if (key === 'painEntries') {
+      if (dataObj[key] !== undefined && !Array.isArray(dataObj[key])) {
+        throw new Error(`Ungültige Export-Datei: Tabelle „${key}“ ist fehlerhaft.`);
+      }
+      continue;
+    }
     if (!Array.isArray(dataObj[key])) {
       throw new Error(`Ungültige Export-Datei: Tabelle „${key}“ fehlt.`);
     }
@@ -181,6 +194,8 @@ export async function importDataExport(
 ): Promise<ImportResult> {
   const { attacks, cycleEvents, medications, medicationIntakes, weatherData, settings } =
     exp.data;
+  // Optional: Exports vor Version 2 kennen die Tabelle noch nicht.
+  const painEntries = Array.isArray(exp.data.painEntries) ? exp.data.painEntries : [];
 
   await database.transaction(
     'rw',
@@ -189,6 +204,7 @@ export async function importDataExport(
       database.cycleEvents,
       database.medications,
       database.medicationIntakes,
+      database.painEntries,
       database.weatherData,
       database.settings,
     ],
@@ -198,6 +214,7 @@ export async function importDataExport(
         database.cycleEvents.clear(),
         database.medications.clear(),
         database.medicationIntakes.clear(),
+        database.painEntries.clear(),
         database.weatherData.clear(),
         database.settings.clear(),
       ]);
@@ -215,6 +232,7 @@ export async function importDataExport(
       if (medicationIntakes.length > 0) {
         await database.medicationIntakes.bulkPut(medicationIntakes);
       }
+      if (painEntries.length > 0) await database.painEntries.bulkPut(painEntries);
       if (weatherData.length > 0) await database.weatherData.bulkPut(weatherData);
       if (settings.length > 0) await database.settings.bulkPut(settings);
     },
@@ -225,6 +243,7 @@ export async function importDataExport(
     cycleEvents: cycleEvents.length,
     medications: medications.length,
     medicationIntakes: medicationIntakes.length,
+    painEntries: painEntries.length,
     weatherData: weatherData.length,
     settings: settings.length,
   };

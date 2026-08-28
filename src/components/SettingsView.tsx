@@ -267,6 +267,7 @@ export function SettingsView() {
         kind: 'success',
         text:
           `Import abgeschlossen: ${res.attacks} Attacken, ` +
+          `${res.painEntries} Schmerzverlauf-Einträge, ` +
           `${res.cycleEvents} Zyklus-Events, ${res.medications} Medikamente, ` +
           `${res.weatherData} Wetterdaten übernommen.`,
       });
