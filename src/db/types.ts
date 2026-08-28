@@ -214,6 +214,24 @@ export interface WeatherData {
 }
 
 // ---------------------------------------------------------------------------
+// Schmerzverlauf
+// ---------------------------------------------------------------------------
+
+/**
+ * Ein einzelner Schmerzzeitpunkt während einer Attacke (Schmerzverlauf).
+ * attackId = logische Referenz auf attacks (kein FK-Constraint in Dexie).
+ * time im selben Format wie startTime/endTime ('YYYY-MM-DDTHH:mm', Ortszeit).
+ */
+export interface PainEntry {
+  id?: number;
+  attackId: number;
+  /** Messzeitpunkt (Ortszeit, 'YYYY-MM-DDTHH:mm'). */
+  time: string;
+  /** Schmerzlevel auf der 1–10-Skala. */
+  level: number;
+}
+
+// ---------------------------------------------------------------------------
 // Einstellungen
 // ---------------------------------------------------------------------------
 

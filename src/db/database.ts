@@ -6,6 +6,7 @@ import type {
   MedicationIntake,
   UserSettings,
   WeatherData,
+  PainEntry,
 } from './types';
 
 /**
@@ -24,6 +25,8 @@ import type {
  *
  *   UserSettings ist eigenständig (kein FK): Single-Row-Tabelle (id: 1)
  *   für globale App-Einstellungen, z. B. festen Standort + GPS-Fallback.
+ *
+ *   painEntries.attackId -> attacks.id (logisch, Kaskade in attackRepository.deleteAttack)
  */
 export class MigraineDB extends Dexie {
   attacks!: Table<MigraineAttack, number>;
@@ -32,6 +35,7 @@ export class MigraineDB extends Dexie {
   medicationIntakes!: Table<MedicationIntake, number>;
   weatherData!: Table<WeatherData, number>;
   settings!: Table<UserSettings, number>;
+  painEntries!: Table<PainEntry, number>;
 
   constructor() {
     super('migraine-tracker');
@@ -61,6 +65,12 @@ export class MigraineDB extends Dexie {
     // Bestehende Tabellen werden von Dexie implizit übernommen.
     this.version(2).stores({
       settings: 'id',
+    });
+
+    // Version 3: Schmerzverlauf (Schmerzzeitpunkte pro Attacke).
+    // Bestehende Tabellen werden von Dexie implizit übernommen.
+    this.version(3).stores({
+      painEntries: '++id, attackId, time',
     });
   }
 }
