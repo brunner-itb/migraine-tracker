@@ -15,11 +15,12 @@ export async function exportMonthlyReport(
   const attackIds = attacks.map((a) => a.id).filter((id): id is number => id !== undefined);
 
   // 1. Zugehörige Daten aus der DB laden (Joins)
-  const [intakes, meds, cycleEvents, weatherRows] = await Promise.all([
+  const [intakes, meds, cycleEvents, weatherRows, painEntries] = await Promise.all([
     db.medicationIntakes.where('attackId').anyOf(attackIds).toArray(),
     db.medications.toArray(),
     db.cycleEvents.toArray(), // Lädt alle, wird gleich gefiltert
     db.weatherData.where('attackId').anyOf(attackIds).toArray(),
+    db.painEntries.where('attackId').anyOf(attackIds).toArray(),
   ]);
 
   const medsMap = new Map(meds.map((m) => [m.id, m]));
@@ -66,11 +67,20 @@ export async function exportMonthlyReport(
       return e.notes || 'Sonstiges';
     });
 
+    // Schmerzverlauf: Peak + Kurzzusammenfassung, z. B. "8 (8→5→2)".
+    const course = painEntries
+      .filter((p) => p.attackId === attack.id)
+      .sort((a, b) => a.time.localeCompare(b.time));
+    const painStr =
+      course.length > 0
+        ? `${attack.painLevel} (${course.map((c) => c.level).join('→')})`
+        : attack.painLevel.toString();
+
     return [
       dateStr.split('-').reverse().join('.'), // DD.MM.YYYY
       startStr,
       endStr,
-      attack.painLevel.toString(),
+      painStr,
       medsStrings.length > 0 ? medsStrings.join('; ') : '–',
       attack.locationName !== '' ? attack.locationName : '–',
       eventsStrings.length > 0 ? eventsStrings.join(', ') : '–'
@@ -102,8 +112,8 @@ export async function exportMonthlyReport(
       0: { cellWidth: 20 },
       1: { cellWidth: 13, halign: 'center' },
       2: { cellWidth: 15, halign: 'center' },
-      3: { cellWidth: 13, halign: 'center' },
-      4: { cellWidth: 52 },
+      3: { cellWidth: 22, halign: 'center' },
+      4: { cellWidth: 43 },
       5: { cellWidth: 32 },
       6: { cellWidth: 37 }
     }
