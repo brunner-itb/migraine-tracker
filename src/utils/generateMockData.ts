@@ -6,6 +6,7 @@
  *   - 2–3 Standard-Medikamente (nur wenn `medications` leer ist)
  *   - 5–8 Attacken pro Monat (nur wenn `attacks` leer ist)
  *   - ~60% der Attacken mit Medikamenteneinnahme (inkl. Wirkungsgrad)
+ *   - ~50% der Attacken mit 1–3 Schmerzverlauf-Einträgen (abfallend)
  *   - Wetterdaten für alle Attacken (via attackRepository.retryMissingWeather)
  *   - Menstruations-Events ca. alle 28 Tage (nur wenn `cycleEvents` leer ist)
  *
@@ -32,6 +33,7 @@ export interface SeedResult {
   medicationsAdded: number;
   attacksAdded: number;
   intakesAdded: number;
+  painEntriesAdded: number;
   cycleEventsAdded: number;
   /** Wetterabrufe, die nach dem Seed erfolgreich waren. */
   weatherFetched: number;
@@ -145,6 +147,7 @@ export async function seedMockData(): Promise<SeedResult> {
     medicationsAdded: 0,
     attacksAdded: 0,
     intakesAdded: 0,
+    painEntriesAdded: 0,
     cycleEventsAdded: 0,
     weatherFetched: 0,
     weatherFailed: 0,
@@ -301,6 +304,27 @@ export async function seedMockData(): Promise<SeedResult> {
             sideEffects: '',
           });
           result.intakesAdded += 1;
+        }
+      }
+
+      // ----------------------------------------------------------------
+      // 4b) ~50% der Attacken mit Schmerzverlauf (1–3 Einträge, abfallend)
+      // ----------------------------------------------------------------
+      if (chance(0.5)) {
+        const peak = attack.painLevel;
+        const entryCount = randInt(1, 3);
+        let t = start.getTime() + randInt(30, 120) * 60_000;
+        let level = peak;
+        for (let k = 0; k < entryCount; k++) {
+          if (t >= end.getTime()) break;
+          if (k > 0) level = Math.max(1, level - randInt(1, 3));
+          await db.painEntries.add({
+            attackId,
+            time: toLocalISO(new Date(t)),
+            level,
+          });
+          result.painEntriesAdded += 1;
+          t += randInt(180, 480) * 60_000;
         }
       }
     }
