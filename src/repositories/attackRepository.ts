@@ -4,6 +4,7 @@ import type {
   EffectivenessScore,
   MedicationRole,
   MigraineAttack,
+  PainEntry,
   WeatherData,
 } from '../db/types';
 import {
@@ -72,6 +73,13 @@ export type UpdatedAttack = Omit<NewAttack, 'type'> & {
    * (Startzeit-Wechsel -> Retry beim nächsten App-Start).
    */
   locationCoords?: Coordinates;
+  /**
+   * Schmerzverlauf: VOLLER Ersatz (alle vorhandenen Einträge werden gelöscht
+   * und diese neu angelegt). Leeres Array = keine Einträge.
+   * Optional (`?? []` im Repository), damit Schritt 2 eigenständig
+   * compilierbar bleibt – der Wizard setzt es ab Schritt 3 immer.
+   */
+  painEntries?: Array<{ time: string; level: number }>;
 };
 
 /**
@@ -221,6 +229,7 @@ export class AttackRepository {
         this.database.medicationIntakes,
         this.database.cycleEvents,
         this.database.weatherData,
+        this.database.painEntries,
       ],
       async () => {
         // 1) Attacken-Zeile
@@ -332,6 +341,19 @@ export class AttackRepository {
           await this.database.cycleEvents.bulkAdd(cycleEvents);
         }
 
+        // 3b) Schmerzverlauf: voller Ersatz (delete + bulkAdd,
+        //     gleiches Muster wie die Medikamenten-Einnahmen oben).
+        await this.database.painEntries
+          .where('attackId')
+          .equals(attackId)
+          .delete();
+        const painEntries = data.painEntries ?? [];
+        if (painEntries.length > 0) {
+          await this.database.painEntries.bulkAdd(
+            painEntries.map((e) => ({ attackId, time: e.time, level: e.level })),
+          );
+        }
+
         // 4) Wetter-Zeile
         let weatherIdToRefresh: number | null = null;
         if (data.locationCoords !== undefined) {
@@ -402,6 +424,7 @@ export class AttackRepository {
    * Löscht eine Attacke inkl. aller abhängigen Daten (Kaskade, atomar):
    *  - Wetter-Zeile (1:1, unique attackId)
    *  - Medikamenten-Einnahmen (n:1)
+   *  - Schmerzverlauf (n:1)
    *
    * Zyklus-Events werden bewusst NICHT gelöscht: Sie sind tagbasiert und
    * eigenständig (kein FK zur Attacke) – derselbe Tag kann weitere Attacken
@@ -413,6 +436,7 @@ export class AttackRepository {
       [
         this.database.weatherData,
         this.database.medicationIntakes,
+        this.database.painEntries,
         this.database.attacks,
       ],
       async () => {
@@ -421,6 +445,10 @@ export class AttackRepository {
           .equals(attackId)
           .delete();
         await this.database.medicationIntakes
+          .where('attackId')
+          .equals(attackId)
+          .delete();
+        await this.database.painEntries
           .where('attackId')
           .equals(attackId)
           .delete();
