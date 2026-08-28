@@ -4,8 +4,10 @@
  * Reine Präsentations-Komponente (controlled): Die Einträge leben im
  * Parent (AttackDetailsForm). Eingabe = Liste + Zeitpicker + 1–10-Auswahl
  * (bewusst KEIN Graph als Eingabe). Der Graph ist nur Anzeige
- * (PainCourseChart, Schritt 6).
+ * (PainCourseChart).
  */
+
+import { PainCourseChart } from './PainCourseChart';
 
 /** Ein Schmerzverlauf-Eintrag im Formular (level 0 = nicht gewählt). */
 export interface PainEntryFormData {
@@ -91,6 +93,10 @@ export function PainCourseEditor({
           + Zeitpunkt
         </button>
       </div>
+
+      {entries.length > 0 && (
+        <PainCourseChart mainLevel={mainLevel} entries={entries} />
+      )}
 
       {entries.length > 0 && (
         <ul className="flex flex-col gap-3">
