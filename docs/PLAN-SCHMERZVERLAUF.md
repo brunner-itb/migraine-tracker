@@ -1,6 +1,6 @@
 # Plan: Schmerzverlauf pro Attacke (variable Schmerzstärke über die Zeit)
 
-> **Status: NICHT UMGESETZT.**
+> **Status: UMGESETZT** (alle Schritte committet auf `feature/schmerzverlauf`).
 > Für ein lokales LLM mit kleinem Kontextfenster: Die Schritte sind
 > **strikt sequenziell** und **jeder für sich compilierbar**. Pro Schritt:
 > „Zuerst lesen“ (nur diese Dateien), „Änderung“ (konkret), „Checkpoint“.
@@ -15,10 +15,14 @@
    Hauptwert (Schmerz bei Beginn, Schritt 1) können **optional mehrere
    zusätzliche Schmerzpunkte** erfasst werden, z. B. 08:30 → 8, 13:00 → 5,
    21:00 → 2.
-2. Erfassung im **Wizard, Schritt 2** (Details) – optional, progressive
-   Disclosure. Der Wizard dient zugleich als Detail-/Edit-Ansicht
-   (Tap auf Attacke = Wizard im Edit-Modus) → dort können Einträge
-   **nachträglich ergänzt/geändert/gelöscht** werden.
+2. Erfassung im **Wizard, Schritt 1** (Grunddaten), direkt unter der
+   1–10-Skala – optional, progressive Disclosure. Der Wizard dient zugleich
+   als Detail-/Edit-Ansicht (Tap auf Attacke = Wizard im Edit-Modus) → dort
+   können Einträge **nachträglich ergänzt/geändert/gelöscht** werden.
+   *(Änderung nach Umsetzung: ursprünglich in Schritt 2 (Details) geplant,
+   später auf Schritt 1 verlegt – Kontinuität „Schmerz → Schmerzverlauf",
+   Start-/Endzeit auf derselben Seite im Blick. Die Schritte 3–5 dieses
+   Dokuments beschreiben die ursprüngliche Variante.)*
 3. **Kein Graph als Eingabe.** Eingabe = Liste + Zeitpicker + 1–10-Auswahl.
    Der Graph (Recharts) ist **nur zur Anzeige**.
 4. `MigraineAttack.painLevel` bleibt das **repräsentative Feld** und wird

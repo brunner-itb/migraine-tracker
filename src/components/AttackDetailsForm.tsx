@@ -1,5 +1,4 @@
 import { useState, type FormEvent } from 'react';
-import { PainCourseEditor, type PainEntryFormData } from './PainCourseEditor';
 
 /**
  * AttackDetailsForm – Wizard-Schritt 2 (Schritt 6.2):
@@ -84,9 +83,6 @@ export interface AttackDetailsFormData {
 
   /** Freitext: Aura, Übelkeit, vermutete Trigger o. Ä. */
   notes: string;
-
-  /** Schmerzverlauf (optional; leeres Array = wie bisher, nur Hauptwert). */
-  painEntries: PainEntryFormData[];
 }
 
 /**
@@ -100,8 +96,6 @@ export interface InitialDetailsData {
   cramps: boolean;
   missedPill: boolean;
   medications: Omit<MedicationEntry, 'id'>[];
-  /** Vorhandene Schmerzverlauf-Einträge (Edit-Mode). */
-  painEntries?: Array<{ time: string; level: number }>;
   notes: string;
 }
 
@@ -114,15 +108,6 @@ export interface AttackDetailsFormProps {
 
   /** Vorgefüllte Daten (Edit-Mode); weggelassen = leeres Formular. */
   initialData?: InitialDetailsData;
-
-  /** Attacken-Start (Minimum für den Zeitpicker des Schmerzverlaufs). */
-  startTime: string;
-
-  /** Attacken-Ende (Maximum für den Zeitpicker); null = läuft noch. */
-  endTime: string | null;
-
-  /** Schmerzlevel aus Schritt 1 (Hauptwert, für Peak-Hinweis im Editor). */
-  mainPainLevel: number;
 
   /**
    * Beschriftung des Submit-Buttons. Default "Weiter" (Zwischenschritt);
@@ -217,9 +202,6 @@ export function AttackDetailsForm({
   submitLabel = 'Weiter',
   isSubmitting = false,
   initialData,
-  startTime,
-  endTime,
-  mainPainLevel,
 }: AttackDetailsFormProps) {
   // --- Form-State ----------------------------------------------------------
   // Edit-Mode: wird aus initialData befüllt (frische UI-IDs pro Eintrag).
@@ -236,13 +218,6 @@ export function AttackDetailsForm({
     (initialData?.medications ?? []).map((m) => ({ ...m, id: createMedicationId() })),
   );
   const [notes, setNotes] = useState(initialData?.notes ?? '');
-  const [painEntries, setPainEntries] = useState<PainEntryFormData[]>(() =>
-    (initialData?.painEntries ?? []).map((e, i) => ({
-      uiId: `pe-${i}`,
-      time: e.time,
-      level: e.level,
-    })),
-  );
 
   // --- Validierung ----------------------------------------------------------
   // Einzige Pflichtregel: Jedes hinzugefügte Medikament braucht einen Namen.
@@ -297,7 +272,6 @@ export function AttackDetailsForm({
       missedPill,
       medications,
       notes,
-      painEntries,
     });
   }
 
@@ -312,17 +286,6 @@ export function AttackDetailsForm({
       <h1 className="text-lg font-semibold text-gray-900">
         Details &amp; Begleitumstände
       </h1>
-
-      {/* ------------------------------------------------------------------ */}
-      {/* Schmerzverlauf (optional)                                          */}
-      {/* ------------------------------------------------------------------ */}
-      <PainCourseEditor
-        entries={painEntries}
-        onChange={setPainEntries}
-        startTime={startTime}
-        endTime={endTime}
-        mainLevel={mainPainLevel}
-      />
 
       {/* ------------------------------------------------------------------ */}
       {/* Zyklus & Begleitumstände                                            */}

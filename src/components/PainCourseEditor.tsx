@@ -2,7 +2,8 @@
  * PainCourseEditor – optionaler Schmerzverlauf einer Attacke.
  *
  * Reine Präsentations-Komponente (controlled): Die Einträge leben im
- * Parent (AttackDetailsForm). Eingabe = Liste + Zeitpicker + 1–10-Auswahl
+ * Parent (AttackForm, Wizard-Schritt 1). Eingabe = Liste + Zeitpicker +
+ * 1–10-Auswahl
  * (bewusst KEIN Graph als Eingabe). Der Graph ist nur Anzeige
  * (PainCourseChart).
  */
@@ -34,6 +35,33 @@ interface PainCourseEditorProps {
 function toLocalInputValue(d: Date): string {
   const p = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+/**
+ * Validiert Schmerzverlauf-Einträge gegen die Attacken-Zeiten.
+ * @returns deutsche Fehlermeldung oder null (alles ok).
+ */
+export function validatePainEntries(
+  entries: Array<{ time: string; level: number }>,
+  startTime: string,
+  endTime: string | null,
+): string | null {
+  for (const e of entries) {
+    if (e.level < 1 || e.level > 10) {
+      return 'Schmerzverlauf: Jeder Eintrag braucht ein Schmerzlevel 1–10.';
+    }
+    const t = new Date(e.time).getTime();
+    if (Number.isNaN(t)) {
+      return 'Schmerzverlauf: Ein Eintrag hat eine ungültige Zeit.';
+    }
+    if (t < new Date(startTime).getTime()) {
+      return 'Schmerzverlauf: Ein Eintrag liegt vor dem Attacken-Start.';
+    }
+    if (endTime !== null && t > new Date(endTime).getTime()) {
+      return 'Schmerzverlauf: Ein Eintrag liegt nach dem Attacken-Ende.';
+    }
+  }
+  return null;
 }
 
 const LEVELS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];

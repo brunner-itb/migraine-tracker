@@ -1,6 +1,11 @@
 import { useState, type FormEvent } from 'react';
 import type { AttackLocation } from '../db/types';
 import { LocationPicker } from './LocationPicker';
+import {
+  PainCourseEditor,
+  validatePainEntries,
+  type PainEntryFormData,
+} from './PainCourseEditor';
 
 /**
  * AttackForm – Basis-Formular für die Hauptdaten einer Attacke (Schritt 6.1).
@@ -22,6 +27,8 @@ import { LocationPicker } from './LocationPicker';
  *    per Suche oder GPS (wichtig für nachträgliche Erfassungen).
  *  - Schmerzstärke: interaktive Skala 1–10 (nummerierte Buttons,
  *    farblich von grün nach rot), Auswahl ist Pflicht.
+ *  - Schmerzverlauf (optional): zusätzliche Schmerzpunkte zu späteren
+ *    Zeitpunkten der Attacke (PainCourseEditor, direkt unter der Skala).
  *
  * iOS-Hinweise:
  *  - `datetime-local` rendert in Safari (iOS 15.4+) die native
@@ -54,6 +61,12 @@ export interface BaseAttackFormData {
   painLevel: number;
 
   /**
+   * Optionaler Schmerzverlauf: zusätzliche Schmerzpunkte zu späteren
+   * Zeitpunkten der Attacke (leeres Array = nur Hauptwert, wie bisher).
+   */
+  painEntries: PainEntryFormData[];
+
+  /**
    * Optionaler, manuell gesetzter Standort (z. B. nachträgliche Erfassung
    * für eine Attacke an einem anderen Ort). null = automatisch
    * (Einstellungen/GPS – die Auflösung passiert im Wizard).
@@ -83,6 +96,9 @@ export interface AttackFormProps {
 
   /** Voreingestellte Schmerzstärke (Edit-Mode). */
   initialPainLevel?: number;
+
+  /** Vorhandene Schmerzverlauf-Einträge (Edit-Mode); ohne UI-IDs. */
+  initialPainEntries?: Array<{ time: string; level: number }>;
 
   /**
    * Voreingestellter Custom-Standort (Edit-Mode). null/undefined =
@@ -151,6 +167,7 @@ export function AttackForm({
   initialIsEnded = false,
   initialEndTime,
   initialPainLevel,
+  initialPainEntries,
   initialLocation = null,
 }: AttackFormProps) {
   // --- Form-State ----------------------------------------------------------
@@ -174,6 +191,16 @@ export function AttackForm({
   // painLevel: 0 = bewusst noch nicht gewählt (Pflichtfeld).
   const [painLevel, setPainLevel] = useState(initialPainLevel ?? 0);
 
+  // painEntries: optionaler Verlauf (leer = nur Hauptwert). Edit-Mode:
+  // wird aus initialPainEntries befüllt (frische UI-IDs als React-Keys).
+  const [painEntries, setPainEntries] = useState<PainEntryFormData[]>(() =>
+    (initialPainEntries ?? []).map((e, i) => ({
+      uiId: `pe-${i}`,
+      time: e.time,
+      level: e.level,
+    })),
+  );
+
   // location: null = automatisch (Einstellungen/GPS). Edit-Mode: wird aus
   // initialLocation befüllt (Name aus der Attacke, Koordinaten aus der
   // verknüpften Wetterzeile – Rekonstruktion passiert im Wizard).
@@ -190,7 +217,21 @@ export function AttackForm({
       new Date(endTime) >= new Date(startTime));
   const isPainValid = painLevel >= 1 && painLevel <= 10;
 
-  const isValid = isStartValid && isEndValid && isEndAfterStart && isPainValid;
+  // Schmerzverlauf: Einträge brauchen gültige Zeiten (innerhalb Start/Ende)
+  // und ein Level 1–10. Fehlermeldung wird unter dem Editor angezeigt,
+  // der "Weiter"-Button bleibt deaktiviert.
+  const painEntriesError = validatePainEntries(
+    painEntries,
+    startTime,
+    isEnded ? (endTime ?? null) : null,
+  );
+
+  const isValid =
+    isStartValid &&
+    isEndValid &&
+    isEndAfterStart &&
+    isPainValid &&
+    painEntriesError === null;
 
   // --- Event-Handler ----------------------------------------------------------
 
@@ -213,6 +254,7 @@ export function AttackForm({
       startTime,
       endTime: isEnded ? endTime : undefined,
       painLevel,
+      painEntries,
       location,
     });
   }
@@ -337,6 +379,22 @@ export function AttackForm({
             : 'Bitte eine Stufe auswählen.'}
         </p>
       </section>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Schmerzverlauf (optional, direkt unter der Skala)                   */}
+      {/* ------------------------------------------------------------------ */}
+      <PainCourseEditor
+        entries={painEntries}
+        onChange={setPainEntries}
+        startTime={startTime}
+        endTime={isEnded ? (endTime ?? null) : null}
+        mainLevel={painLevel}
+      />
+      {painEntriesError !== null && (
+        <p role="alert" className="text-xs text-red-600">
+          {painEntriesError}
+        </p>
+      )}
 
       {/* ------------------------------------------------------------------ */}
       {/* Submit                                                               */}

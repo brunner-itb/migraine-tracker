@@ -5,6 +5,7 @@ import {
   type AttackDetailsFormData,
   type InitialDetailsData,
 } from './AttackDetailsForm';
+import { validatePainEntries } from './PainCourseEditor';
 import {
   attackRepository,
   MISSED_PILL_NOTE,
@@ -42,37 +43,6 @@ import type { AttackLocation, CycleEvent, MigraineAttack } from '../db/types';
  */
 
 // ---------------------------------------------------------------------------
-// Validierungshelfer
-// ---------------------------------------------------------------------------
-
-/**
- * Validiert Schmerzverlauf-Einträge.
- * @returns deutsche Fehlermeldung oder null (alles ok).
- */
-function validatePainEntries(
-  entries: Array<{ time: string; level: number }>,
-  startTime: string,
-  endTime: string | null,
-): string | null {
-  for (const e of entries) {
-    if (e.level < 1 || e.level > 10) {
-      return 'Schmerzverlauf: Jeder Eintrag braucht ein Schmerzlevel 1–10.';
-    }
-    const t = new Date(e.time).getTime();
-    if (Number.isNaN(t)) {
-      return 'Schmerzverlauf: Ein Eintrag hat eine ungültige Zeit.';
-    }
-    if (t < new Date(startTime).getTime()) {
-      return 'Schmerzverlauf: Ein Eintrag liegt vor dem Attacken-Start.';
-    }
-    if (endTime !== null && t > new Date(endTime).getTime()) {
-      return 'Schmerzverlauf: Ein Eintrag liegt nach dem Attacken-Ende.';
-    }
-  }
-  return null;
-}
-
-// ---------------------------------------------------------------------------
 // DB-Mapping
 // ---------------------------------------------------------------------------
 
@@ -99,7 +69,7 @@ function toNewAttack(
     endTime: base.endTime ?? null,
     painLevel: Math.max(
       base.painLevel,
-      ...details.painEntries.map((e) => e.level),
+      ...base.painEntries.map((e) => e.level),
     ),
     type: 'migraine',
     notes: details.notes,
@@ -108,8 +78,9 @@ function toNewAttack(
 }
 
 /**
- * Persistiert die Details-Daten (Schritt 2) für eine bereits gespeicherte
- * Attacke: Zyklus-Ereignisse + Medikamenten-Einnahmen.
+ * Persistiert die Details-Daten (Schritt 2) + Schmerzverlauf (Schritt 1)
+ * für eine bereits gespeicherte Attacke: Zyklus-Ereignisse,
+ * Medikamenten-Einnahmen, Verlaufseinträge.
  *
  * Hinweis: Direkter `db`-Zugriff als platzsparende Übergangslösung, bis ein
  * dediziertes medicationRepository/cycleRepository existiert (Refactoring-
@@ -135,6 +106,7 @@ async function persistAttackDetails(
   attackId: number,
   details: AttackDetailsFormData,
   attackStart: string,
+  painEntries: Array<{ time: string; level: number }>,
 ): Promise<void> {
   // 'YYYY-MM-DDTHH:mm' (Lokalzeit) -> 'YYYY-MM-DD'; Slice ohne Date-Objekt,
   // damit keine Timezone-Umrechnung dazwischenspielt.
@@ -226,10 +198,10 @@ async function persistAttackDetails(
         });
       }
 
-      // 3) Schmerzverlauf
-      if (details.painEntries.length > 0) {
+      // 3) Schmerzverlauf (kommt aus Schritt 1 – s. BaseAttackFormData)
+      if (painEntries.length > 0) {
         await db.painEntries.bulkAdd(
-          details.painEntries.map((e) => ({
+          painEntries.map((e) => ({
             attackId,
             time: e.time,
             level: e.level,
@@ -279,6 +251,11 @@ export function AddAttackWizard({
 
   // Edit-Mode: Initialdaten für Schritt 2 (Intakes + Zyklus-Events) laden.
   const [detailsInitial, setDetailsInitial] = useState<InitialDetailsData | null>(null);
+
+  // Edit-Mode: geladene Schmerzverlauf-Einträge für Schritt 1.
+  const [initialPainEntries, setInitialPainEntries] = useState<
+    Array<{ time: string; level: number }> | null
+  >(null);
 
   // Edit-Mode: rekonstruierter Custom-Standort (Name aus der Attacke,
   // Koordinaten aus der verknüpften Wetterzeile). null = automatisch.
@@ -330,9 +307,11 @@ export function AddAttackWizard({
             };
           })
           .filter((m) => m.name !== ''),
-        painEntries: painEntries.map((e) => ({ time: e.time, level: e.level })),
         notes: initialAttack.notes,
       });
+      setInitialPainEntries(
+        painEntries.map((e) => ({ time: e.time, level: e.level })),
+      );
       // Custom-Standort rekonstruieren: Name aus der Attacke, Koordinaten
       // aus der 1:1-Wetterzeile. Leerer Name = automatisch (null) – die
       // Wetterzeile trägt dann die automatisch ermittelten Koordinaten.
@@ -353,6 +332,18 @@ export function AddAttackWizard({
   // --- Navigation ----------------------------------------------------------
 
   function handleBaseNext(data: BaseAttackFormData): void {
+    // Defensive: AttackForm blockiert bereits über den deaktivierten
+    // "Weiter"-Button + Inline-Fehler; hier wird der Datenvertrag
+    // doppelt geprüft.
+    const painError = validatePainEntries(
+      data.painEntries,
+      data.startTime,
+      data.endTime ?? null,
+    );
+    if (painError !== null) {
+      alert(painError);
+      return;
+    }
     setBaseData(data);
     setStep(2);
     window.scrollTo({ top: 0 });
@@ -369,16 +360,6 @@ export function AddAttackWizard({
     details: AttackDetailsFormData,
   ): Promise<void> {
     if (baseData === null || submittingRef.current) return;
-
-    const painError = validatePainEntries(
-      details.painEntries,
-      baseData.startTime,
-      baseData.endTime ?? null,
-    );
-    if (painError !== null) {
-      alert(painError);
-      return;
-    }
 
     submittingRef.current = true;
     setIsSubmitting(true);
@@ -418,8 +399,14 @@ export function AddAttackWizard({
           throw new Error('addAttack lieferte keine Attacken-ID');
         }
 
-        // 3) Details (Zyklus-Ereignisse + Medikamenten-Einnahmen) persistieren.
-        await persistAttackDetails(saved.id, details, baseData.startTime);
+        // 3) Details (Zyklus-Ereignisse + Medikamenten-Einnahmen) +
+        //    Schmerzverlauf (aus Schritt 1) persistieren.
+        await persistAttackDetails(
+          saved.id,
+          details,
+          baseData.startTime,
+          baseData.painEntries,
+        );
       }
 
       onSuccess?.();
@@ -460,9 +447,9 @@ export function AddAttackWizard({
       endTime: base.endTime ?? null,
       painLevel: Math.max(
         base.painLevel,
-        ...details.painEntries.map((e) => e.level),
+        ...base.painEntries.map((e) => e.level),
       ),
-      painEntries: details.painEntries,
+      painEntries: base.painEntries,
       notes: details.notes,
       locationName: custom?.name ?? '',
       locationCoords:
@@ -506,6 +493,7 @@ export function AddAttackWizard({
           initialIsEnded={initialAttack?.endTime != null}
           initialEndTime={initialAttack?.endTime ?? undefined}
           initialPainLevel={initialAttack?.painLevel}
+          initialPainEntries={initialPainEntries ?? undefined}
           initialLocation={initialLocation}
         />
       ) : isEditMode && detailsInitial === null ? (
@@ -519,9 +507,6 @@ export function AddAttackWizard({
           submitLabel="Speichern"
           isSubmitting={isSubmitting}
           initialData={detailsInitial ?? undefined}
-          startTime={baseData?.startTime ?? ''}
-          endTime={baseData?.endTime ?? null}
-          mainPainLevel={baseData?.painLevel ?? 0}
         />
       )}
 
