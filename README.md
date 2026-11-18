@@ -13,6 +13,13 @@ Personal migraine journal as a web app (PWA). Runs entirely in the browser, work
 - Cycle events: menstruation, PMS, spotting, cramps, other (e.g. missed pill)
 - Free-text notes (triggers, aura, nausea, ...)
 
+### Food log (Ernährung)
+
+- Optional day-based food diary next to the journal: name, category (alcohol, cheese, chocolate, cured meats, processed, caffeine, sauces, spicy, gluten, dairy, skipped meal, other), optional time, quantity, note
+- Name autocomplete from previous entries; in-place editing; delete with confirmation dialog
+- Mini calendar with month navigation: a small dot marks every day that has at least one entry
+- Statistics view, card **„Ernährung & Migräne“**: for every category, compares how often it occurred in the **24 h before an attack start** vs. how often on logged non-attack days (exposure rates + rate difference, sorted by difference — red = excess before attacks, green = deficit)
+
 ### Weather data & correlation
 
 - For every attack, the **hourly surface pressure (hPa) at the exact start time** of the attack is fetched from the [Open-Meteo](https://open-meteo.com/) API (no API key) for the attack's location
@@ -30,8 +37,8 @@ Personal migraine journal as a web app (PWA). Runs entirely in the browser, work
 
 ### Data
 
-- JSON backup: export & import
-- Sample-data generator to try the app with a fresh database
+- JSON backup: export & import (food entries included; old backups without the food log import fine)
+- Sample-data generator to try the app with a fresh database (attacks, cycle events, medication, food entries)
 
 ## Tech
 
