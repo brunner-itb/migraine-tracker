@@ -53,6 +53,19 @@ export class FoodRepository {
   }
 
   /**
+   * Distinkte Tage ('YYYY-MM-DD', aufsteigend) mit mindestens einem
+   * Eintrag im Zeitraum [start, end], inklusiv.
+   * (Mini-Kalender im Ernährung-Tab: dezenten Tages-Punkt.)
+   */
+  async getDatesWithEntries(start: string, end: string): Promise<string[]> {
+    const entries = await this.database.foodEntries
+      .where('date')
+      .between(start, end)
+      .toArray();
+    return [...new Set(entries.map((e) => e.date))].sort();
+  }
+
+  /**
    * Alle Einträge im Zeitraum [start, end] ('YYYY-MM-DD', inklusiv),
    * aufsteigend nach Datum. (Vorbereitung für PDF-Spalte/Follow-ups.)
    */

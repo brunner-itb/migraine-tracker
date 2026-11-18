@@ -1197,14 +1197,14 @@ const NORMAL_CATEGORIES: FoodCategory[] = [
 1. `npx tsc --noEmit` → **0 Fehler**.
 2. `npm run build` → erfolgreich (PWA-SW wird generiert).
 3. **Manueller Test (iOS Safari / PWA):**
-   - [ ] Bottom-Navigation zeigt 5 Tabs; Tab „Ernährung“ öffnet die View.
-   - [ ] Datum-Default = heute; Eingabe: Name „Rotwein“, Kategorie
+   - [x] Bottom-Navigation zeigt 5 Tabs; Tab „Ernährung“ öffnet die View.
+   - [x] Datum-Default = heute; Eingabe: Name „Rotwein“, Kategorie
          Alkohol, Uhrzeit 19:00, Menge „1 Glas“ → Eintrag erscheint in
          der Liste (sortiert nach Uhrzeit).
-   - [ ] Bearbeiten: Menge ändern → gespeichert; Löschen: Eintrag weg.
-   - [ ] Autocomplete: Nach dem ersten Eintrag erscheint der Name im
+   - [x] Bearbeiten: Menge ändern → gespeichert; Löschen: Eintrag weg.
+   - [x] Autocomplete: Nach dem ersten Eintrag erscheint der Name im
          `<datalist>` des nächsten Eingabefelds.
-   - [ ] Statistik: Karte „Ernährung & Migräne“ ist sichtbar; mit leerem
+   - [x] Statistik: Karte „Ernährung & Migräne“ ist sichtbar; mit leerem
          Log: „Noch keine Lebensmittel erfasst.“ + Hinweiszeile; mit
          Einträgen: Summary + Pro-Kategorie-Liste (absteigend nach
          Differenz; Zeilenfarben: rot = Exzess vor Attacken, grün = Defizit,

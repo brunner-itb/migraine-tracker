@@ -412,8 +412,8 @@ export default function App() {
           {(
             [
               ['journal', 'Journal'],
-              ['stats', 'Statistik'],
               ['food', 'Ernährung'],
+              ['stats', 'Statistik'],
               ['report', 'Bericht'],
               ['settings', 'Einstellungen'],
             ] as [Tab, string][]
