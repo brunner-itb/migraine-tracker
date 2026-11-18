@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { ConfirmDialog } from './ConfirmDialog';
 import { foodRepository, type NewFoodEntry } from '../repositories/foodRepository';
 import type { FoodCategory, FoodEntry } from '../db/types';
 import {
@@ -19,7 +20,7 @@ import {
  *   „Speichern“/„Abbrechen“ direkt daneben).
  *   Der Modus ist jederzeit erkennbar, und „Abbrechen“ schließt ihn
  *   ohne Tab-Wechsel.
- * - Löschen direkt (kleine Einträge, kein ConfirmDialog – bewusst).
+ * - Löschen: wie bei Attacken über den ConfirmDialog bestätigt.
  */
 
 /** 'YYYY-MM-DD' von heute (Geräte-Zeitzone). */
@@ -187,6 +188,9 @@ export function FoodView() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Eintrag, dessen Löschung gerade im ConfirmDialog bestätigt wird. */
+  const [deleteTarget, setDeleteTarget] = useState<FoodEntry | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const loadEntries = useCallback(async () => {
     setEntries(await foodRepository.getFoodEntriesForDay(date));
@@ -197,25 +201,24 @@ export function FoodView() {
     void loadEntries();
   }, [loadEntries]);
 
-  // Punkte im Kalender: Tage mit Eintrag im sichtbaren Monat laden.
-  useEffect(() => {
-    let cancelled = false;
+  /** Punkte im Kalender: Tage mit Eintrag im sichtbaren Monat laden. */
+  const loadEntryDates = useCallback(async () => {
     const { year, month } = view;
     const start = dateOnly(year, month, 1);
     const end = dateOnly(year, month, new Date(year, month + 1, 0).getDate());
-    void foodRepository
-      .getDatesWithEntries(start, end)
-      .then((dates) => {
-        if (!cancelled) setEntryDates(new Set(dates));
-      })
-      .catch((err) => {
-        console.error('[FoodView] Kalendertage laden fehlgeschlagen:', err);
-        if (!cancelled) setEntryDates(new Set());
-      });
-    return () => {
-      cancelled = true;
-    };
+    try {
+      setEntryDates(
+        new Set(await foodRepository.getDatesWithEntries(start, end)),
+      );
+    } catch (err) {
+      console.error('[FoodView] Kalendertage laden fehlgeschlagen:', err);
+      setEntryDates(new Set());
+    }
   }, [view]);
+
+  useEffect(() => {
+    void loadEntryDates();
+  }, [loadEntryDates]);
 
   /** Einen Monat im Kalender vor/zurück (±1). */
   function changeMonth(delta: number): void {
@@ -245,7 +248,8 @@ export function FoodView() {
       await write();
       setForm(EMPTY_FORM);
       setEditingId(null);
-      await loadEntries();
+      // Liste UND Kalender-Punkte neu laden (neuer Tag mit Eintrag?).
+      await Promise.all([loadEntries(), loadEntryDates()]);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -268,13 +272,27 @@ export function FoodView() {
     void saveEntry(() => foodRepository.updateFoodEntry(id, buildEntryData()));
   }
 
-  async function handleDelete(id: number): Promise<void> {
-    await foodRepository.deleteFoodEntry(id);
-    if (editingId === id) {
-      setForm(EMPTY_FORM);
-      setEditingId(null);
+  /** Bestätigtes Löschen (nach ConfirmDialog): DB-Löschung + Reload. */
+  async function handleConfirmDelete(): Promise<void> {
+    const target = deleteTarget;
+    if (target === null || target.id === undefined || isDeleting) return;
+    const id = target.id;
+    setIsDeleting(true);
+    try {
+      await foodRepository.deleteFoodEntry(id);
+      if (editingId === id) {
+        setForm(EMPTY_FORM);
+        setEditingId(null);
+      }
+      // Liste UND Kalender-Punkte neu laden (Tag jetzt ohne Eintrag?).
+      await Promise.all([loadEntries(), loadEntryDates()]);
+      setDeleteTarget(null);
+    } catch (err) {
+      console.error('[FoodView] Eintrag löschen fehlgeschlagen:', err);
+      setError('Eintrag konnte nicht gelöscht werden.');
+    } finally {
+      setIsDeleting(false);
     }
-    await loadEntries();
   }
 
   /** Eintrag zum Bearbeiten aufklappen (erneuter Tap = aufklappen). */
@@ -512,7 +530,7 @@ export function FoodView() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => entry.id !== undefined && void handleDelete(entry.id)}
+                        onClick={() => setDeleteTarget(entry)}
                         className="min-h-9 rounded-lg px-2 py-1 text-xs text-gray-400 hover:bg-gray-100 hover:text-rose-600"
                         aria-label={`Eintrag „${entry.name}“ löschen`}
                       >
@@ -557,6 +575,27 @@ export function FoodView() {
           </form>
         </div>
       )}
+
+      {/* Lösch-Bestätigung (gleiche Komponente wie beim Attacke-Löschen). */}
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title="Eintrag löschen?"
+        message={
+          deleteTarget !== null ? (
+            <>
+              Der Eintrag „<strong>{deleteTarget.name}</strong>“
+              {deleteTarget.time !== null ? ` um ${deleteTarget.time}` : ''}{' '}
+              ({FOOD_CATEGORY_LABELS[deleteTarget.category]}) wird endgültig
+              gelöscht. Das kann nicht rückgängig gemacht werden.
+            </>
+          ) : null
+        }
+        confirmLabel="Löschen"
+        cancelLabel="Abbrechen"
+        isPending={isDeleting}
+        onConfirm={() => void handleConfirmDelete()}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </section>
   );
 }
