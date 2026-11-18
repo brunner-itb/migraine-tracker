@@ -1215,19 +1215,19 @@ const NORMAL_CATEGORIES: FoodCategory[] = [
          14:00 am selben Tag (30 h Abstand) → nicht.
    - [ ] Ohne Uhrzeit: Eintrag auf dem Tag der Attacke (Fenster berührt
          den Tag) → wird als Exponiert gewertet (konservativ).
-   - [ ] Beispieldaten (Testbereich, leere DB): Seed → `foodEntries`
+   - [x] Beispieldaten (Testbereich, leere DB): Seed → `foodEntries`
          gefüllt; Statistik-Karte zeigt Käse/Alkohol ähnlich in den
          oberen Zeilen (Trigger-Bias wirkt).
-   - [ ] Export: JSON enthält `foodEntries` + `version: 3`; Import
+   - [x] Export: JSON enthält `foodEntries` + `version: 3`; Import
          (neues Profil/leerte DB) → Einträge wieder da.
-   - [ ] Import einer **alten** Backup-Datei (v2, ohne `foodEntries`)
+   - [?] Import einer **alten** Backup-Datei (v2, ohne `foodEntries`)
          → funktioniert, `foodEntries` bleibt leer.
 4. **Regression (bestehende Features):**
    - [ ] Wetter-Retry beim Start, Zyklus-Korrelation, Druck-Korrelation,
          Schmerzverlauf, PDF-Report, Mock-Seed: unverändert (neue Tabelle
          wird von Dexie-Migration v4 verlustfrei übernommen; in IndexedDB
          `foodEntries` mit Schema-Version 4 sichtbar).
-   - [ ] Attacke löschen → Food-Einträge bleiben (eigenständig, by design).
+   - [x] Attacke löschen → Food-Einträge bleiben (eigenständig, by design).
 
 ## Edge Cases & bekannte Limitierungen (bewusst so)
 
