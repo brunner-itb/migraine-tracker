@@ -4,8 +4,10 @@ import type {
   FoodCategory,
   FoodEntry,
   MigraineAttack,
+  PainEntry,
   WeatherData,
 } from '../db/types';
+import { attackPeakPain, entryPeakByAttack } from '../utils/pain';
 
 /**
  * statisticsService – reiner Statistik-Layer (Schritt 4).
@@ -42,6 +44,12 @@ import type {
  * Randfälle: Bei n < MIN_N, fehlenden Werten oder Varianzlosigkeit
  * (konstanter Indikator/Schmerz) geben die Funktionen r = null zurück –
  * die UI muss damit rechnen und „nicht auswertbar“ darstellen.
+ *
+ * Schmerz-Semantik: `MigraineAttack.painLevel` ist der Schmerz zum
+ * Startzeitpunkt. Die Funktionen bewerten jede Attacke mit ihrem
+ * GESAMTSCHMERZ (Peak aus Startwert + Verlaufseinträgen, s. utils/pain.ts);
+ * optional über den `painEntries`-Parameter übergebbar (Default leer =
+ * nur Startwert).
  */
 
 // ---------------------------------------------------------------------------
@@ -151,6 +159,7 @@ export interface ChartDataPoint {
 export function analyzePressureCorrelation(
   attacks: MigraineAttack[],
   weatherData: WeatherData[],
+  painEntries: PainEntry[] = [],
 ): PressureCorrelationResult {
   // 1:1-Join über weatherData.attackId (nur Paare mit Druckwert).
   const pressureByAttack = new Map<number, number>();
@@ -159,6 +168,7 @@ export function analyzePressureCorrelation(
       pressureByAttack.set(w.attackId, w.surfacePressure);
     }
   }
+  const peakByAttack = entryPeakByAttack(painEntries);
 
   const pain: number[] = [];
   const pressure: number[] = [];
@@ -170,7 +180,9 @@ export function analyzePressureCorrelation(
       excluded += 1;
       continue;
     }
-    pain.push(a.painLevel);
+    pain.push(
+      attackPeakPain(a.painLevel, peakByAttack.get(a.id)),
+    );
     pressure.push(p);
   }
 
@@ -219,10 +231,12 @@ export function analyzePressureCorrelation(
 export function analyzeCycleCorrelation(
   attacks: MigraineAttack[],
   cycleEvents: CycleEvent[],
+  painEntries: PainEntry[] = [],
 ): CycleCorrelationResult {
   const events = cycleEvents.filter(
     (e) => e.type === 'menstruation' || e.type === 'pms',
   );
+  const peakByAttack = entryPeakByAttack(painEntries);
 
   const pain: number[] = [];
   const indicator: number[] = [];
@@ -233,9 +247,13 @@ export function analyzeCycleCorrelation(
     const date = localDateOf(a.startTime);
     if (date === null) continue; // unparsebares Startdatum -> defensive aussortieren
     const onEventDay = isEventDay(date, events);
-    pain.push(a.painLevel);
+    const painValue = attackPeakPain(
+      a.painLevel,
+      a.id !== undefined ? peakByAttack.get(a.id) : undefined,
+    );
+    pain.push(painValue);
     indicator.push(onEventDay ? 1 : 0);
-    (onEventDay ? painOnEventDays : painOnOtherDays).push(a.painLevel);
+    (onEventDay ? painOnEventDays : painOnOtherDays).push(painValue);
   }
 
   const n = pain.length;
@@ -486,11 +504,15 @@ function isExposed(
  *                      'pending'/'error' -> die UI kann dann Lücken zeigen).
  * @param cycleEvents   Optional, aber für `hasPMS` nötig. Default leer
  *                      (dann immer hasPMS = false).
+ * @param painEntries   Optional: Schmerzverlauf-Einträge. Default leer.
+ *                      `painLevel` im Chart = Gesamtschmerz (Peak aus
+ *                      Startwert + Verlauf), s. utils/pain.ts.
  */
 export function getChartData(
   attacks: MigraineAttack[],
   weatherData: WeatherData[],
   cycleEvents: CycleEvent[] = [],
+  painEntries: PainEntry[] = [],
 ): ChartDataPoint[] {
   const pressureByAttack = new Map<number, number | null>();
   for (const w of weatherData) {
@@ -499,6 +521,7 @@ export function getChartData(
   const events = cycleEvents.filter(
     (e) => e.type === 'menstruation' || e.type === 'pms',
   );
+  const peakByAttack = entryPeakByAttack(painEntries);
 
   const points: ChartDataPoint[] = [];
   for (const a of attacks) {
@@ -509,7 +532,10 @@ export function getChartData(
       formattedDate:
         `${d.toLocaleDateString('de-DE')}, ` +
         d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }),
-      painLevel: a.painLevel,
+      painLevel: attackPeakPain(
+        a.painLevel,
+        a.id !== undefined ? peakByAttack.get(a.id) : undefined,
+      ),
       pressure: a.id !== undefined ? (pressureByAttack.get(a.id) ?? null) : null,
       // 'en-CA' liefert zuverlässig 'YYYY-MM-DD' in der Geräte-Zeitzone.
       hasPMS: isEventDay(d.toLocaleDateString('en-CA'), events),

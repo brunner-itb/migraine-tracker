@@ -1,6 +1,15 @@
 # Plan: Schmerzverlauf pro Attacke (variable Schmerzstärke über die Zeit)
 
 > **Status: UMGESETZT** (alle Schritte committet auf `feature/schmerzverlauf`).
+>
+> **Änderung (Bugfix):** `MigraineAttack.painLevel` ist wieder der Schmerz
+> zum Startzeitpunkt (t_0) und wird beim Speichern NICHT mit dem Peak
+> überschrieben. Der Peak (Gesamtschmerz) wird auf der Leserseite aus
+> `painLevel` + `painEntries` abgeleitet (`src/utils/pain.ts`: Journal-Badge,
+> Statistik, Arztbericht). Grund: Die Peak-Überschreibung verlor den
+> Original-Schmerz zu t_0 – im Edit-Mode zeigte das Hauptfeld danach den
+> Peak statt des Start-Schmerzes.
+>
 > Für ein lokales LLM mit kleinem Kontextfenster: Die Schritte sind
 > **strikt sequenziell** und **jeder für sich compilierbar**. Pro Schritt:
 > „Zuerst lesen“ (nur diese Dateien), „Änderung“ (konkret), „Checkpoint“.

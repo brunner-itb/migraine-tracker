@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { db } from './db/database';
-import type { MigraineAttack } from './db/types';
+import type { MigraineAttack, PainEntry } from './db/types';
+import { attackPeakPain, entryPeakByAttack } from './utils/pain';
 import { AddAttackWizard } from './components/AddAttackWizard';
 import { ConfirmDialog } from './components/ConfirmDialog';
 import { StatisticsView } from './components/StatisticsView';
@@ -51,6 +52,9 @@ function formatDate(iso: string): string {
 export default function App() {
   const [tab, setTab] = useState<Tab>('journal');
   const [attacks, setAttacks] = useState<MigraineAttack[]>([]);
+  // Schmerzverlauf-Einträge: für den abgeleiteten Gesamtschmerz (Peak)
+  // in Badges/DIALOG – `painLevel` in der DB ist der Start-Schmerz.
+  const [painEntries, setPainEntries] = useState<PainEntry[]>([]);
   const [showWizard, setShowWizard] = useState(false);
   const [editTarget, setEditTarget] = useState<MigraineAttack | null>(null);
 
@@ -79,20 +83,30 @@ export default function App() {
   const [isSeeding, setIsSeeding] = useState(false);
 
   const loadAttacks = useCallback(async () => {
-    const rows = await db.attacks.orderBy('startTime').reverse().toArray();
+    const [rows, entries] = await Promise.all([
+      db.attacks.orderBy('startTime').reverse().toArray(),
+      db.painEntries.toArray(),
+    ]);
     setAttacks(rows);
+    setPainEntries(entries);
   }, []);
 
+  // attackId -> höchster Schmerzverlauf-Wert (für die Peak-Anzeige).
+  const peakByAttack = useMemo(() => entryPeakByAttack(painEntries), [painEntries]);
+
   const loadStats = useCallback(async () => {
-    const [allAttacks, weather, cycles, foodEntries] = await Promise.all([
-      db.attacks.toArray(),
-      db.weatherData.toArray(),
-      db.cycleEvents.toArray(),
-      db.foodEntries.toArray(),
-    ]);
-    setChartData(getChartData(allAttacks, weather, cycles));
-    setPressureCorrelation(analyzePressureCorrelation(allAttacks, weather));
-    setCycleCorrelation(analyzeCycleCorrelation(allAttacks, cycles));
+    const [allAttacks, weather, cycles, foodEntries, painRows] =
+      await Promise.all([
+        db.attacks.toArray(),
+        db.weatherData.toArray(),
+        db.cycleEvents.toArray(),
+        db.foodEntries.toArray(),
+        db.painEntries.toArray(),
+      ]);
+    // Statistik nutzt den Gesamtschmerz (Peak) je Attacke – s. utils/pain.ts.
+    setChartData(getChartData(allAttacks, weather, cycles, painRows));
+    setPressureCorrelation(analyzePressureCorrelation(allAttacks, weather, painRows));
+    setCycleCorrelation(analyzeCycleCorrelation(allAttacks, cycles, painRows));
     setFoodAnalysis(analyzeFoodCorrelation(allAttacks, foodEntries));
   }, []);
 
@@ -185,6 +199,17 @@ export default function App() {
     }
   }
 
+  // Gesamtschmerz (Peak) für den Lösch-Dialog – konsistent zum Listen-Badge.
+  const deletePainPeak =
+    deleteTarget !== null
+      ? attackPeakPain(
+          deleteTarget.painLevel,
+          deleteTarget.id !== undefined
+            ? peakByAttack.get(deleteTarget.id)
+            : undefined,
+        )
+      : null;
+
   return (
     <div className="flex min-h-full flex-col">
       {/* Header */}
@@ -203,7 +228,14 @@ export default function App() {
                 Tippe auf „Neue Attacke“, um zu starten.
               </p>
             )}
-            {attacks.map((attack) => (
+            {attacks.map((attack) => {
+              // Gesamtschmerz (Peak) aus Start-Schmerz + Verlauf – die DB
+              // speichert in `painLevel` bewusst nur den Start-Schmerz.
+              const painPeak = attackPeakPain(
+                attack.painLevel,
+                attack.id !== undefined ? peakByAttack.get(attack.id) : undefined,
+              );
+              return (
               <article
                 key={attack.id}
                 role="button"
@@ -226,9 +258,9 @@ export default function App() {
                   </p>
                   <div className="mt-1.5 flex flex-wrap items-center gap-2">
                     <span
-                      className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${painBadgeClass(attack.painLevel)}`}
+                      className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${painBadgeClass(painPeak)}`}
                     >
-                      Schmerz {attack.painLevel}/10
+                      Schmerz {painPeak}/10
                     </span>
                     <span className="text-xs text-gray-500">
                       {TYPE_LABELS[attack.type]}
@@ -294,7 +326,8 @@ export default function App() {
                   </button>
                 </div>
               </article>
-            ))}
+              );
+            })}
           </div>
         )}
 
@@ -431,7 +464,7 @@ export default function App() {
           deleteTarget !== null ? (
             <>
               Die Attacke vom <strong>{formatDate(deleteTarget.startTime)}</strong>{' '}
-              (Schmerz {deleteTarget.painLevel}/10, {TYPE_LABELS[deleteTarget.type]}){' '}
+              (Schmerz {deletePainPeak}/10, {TYPE_LABELS[deleteTarget.type]}){' '}
               wird endgültig gelöscht. Das kann nicht rückgängig gemacht werden.
             </>
           ) : null

@@ -24,6 +24,10 @@ import type { AttackLocation, CycleEvent, MigraineAttack } from '../db/types';
  *  - Schritt-State (1 = Grunddaten, 2 = Details) + Daten-Sammlung:
  *      Schritt 1 liefert BaseAttackFormData (wird hier zwischengespeichert),
  *      Schritt 2 liefert AttackDetailsFormData direkt per onSubmit.
+ *  - Zwischenspeicherung: Beide Formular-Schritte bleiben MOUNTED,
+ *      der inaktive Schritt wird nur per CSS ausgeblendet (hidden). Die
+ *      Formulare initialisieren ihren State einmalig aus Props – ein
+ *      Remount bei Schritt-Wechsel würde alle Eingaben verlieren.
  *  - Standortauflösung, blockiert nie:
  *    Custom-Standort aus dem Formular (LocationPicker, Schritt 1) hat
  *    Vorrang – z. B. nachträgliche Erfassung für eine Attacke, die an
@@ -57,7 +61,10 @@ import type { AttackLocation, CycleEvent, MigraineAttack } from '../db/types';
  *    erfassen ('migraine' | 'tension' | 'other').
  *  - `notes`: Freitext aus Schritt 2 (Trigger/Aura/Übelkeit).
  *  - `locationName`: Anzeigename des Custom-Standorts ('' = automatisch).
- *  - `painLevel` = Peak aus Hauptwert + Verlaufseinträgen.
+ *  - `painLevel` = Schmerz zum Startzeitpunkt (Hauptwert) – NICHT der
+ *    Peak. Der Peak (Gesamtschmerz) wird auf der Leserseite aus
+ *    `painLevel` + `painEntries` abgeleitet (s. utils/pain.ts); so bleibt
+ *    der Original-Schmerz zu t_0 beim Bearbeiten erhalten.
  */
 function toNewAttack(
   base: BaseAttackFormData,
@@ -67,10 +74,7 @@ function toNewAttack(
   return {
     startTime: base.startTime,
     endTime: base.endTime ?? null,
-    painLevel: Math.max(
-      base.painLevel,
-      ...base.painEntries.map((e) => e.level),
-    ),
+    painLevel: base.painLevel,
     type: 'migraine',
     notes: details.notes,
     locationName,
@@ -445,10 +449,9 @@ export function AddAttackWizard({
     return {
       startTime: base.startTime,
       endTime: base.endTime ?? null,
-      painLevel: Math.max(
-        base.painLevel,
-        ...base.painEntries.map((e) => e.level),
-      ),
+      // Start-Schmerz bleibt unverändert gespeichert (Peak wird auf der
+      // Leserseite abgeleitet, s. utils/pain.ts).
+      painLevel: base.painLevel,
       painEntries: base.painEntries,
       notes: details.notes,
       locationName: custom?.name ?? '',
@@ -485,29 +488,32 @@ export function AddAttackWizard({
         <p className="mt-10 text-center text-sm text-gray-500">
           Daten werden geladen …
         </p>
-      ) : step === 1 ? (
-        <AttackForm
-          onNext={handleBaseNext}
-          title={isEditMode ? 'Attacke bearbeiten' : 'Neue Attacke erfassen'}
-          initialStartTime={initialAttack?.startTime}
-          initialIsEnded={initialAttack?.endTime != null}
-          initialEndTime={initialAttack?.endTime ?? undefined}
-          initialPainLevel={initialAttack?.painLevel}
-          initialPainEntries={initialPainEntries ?? undefined}
-          initialLocation={initialLocation}
-        />
-      ) : isEditMode && detailsInitial === null ? (
-        <p className="mt-10 text-center text-sm text-gray-500">
-          Details werden geladen …
-        </p>
       ) : (
-        <AttackDetailsForm
-          onSubmit={handleDetailsSubmit}
-          onBack={handleDetailsBack}
-          submitLabel="Speichern"
-          isSubmitting={isSubmitting}
-          initialData={detailsInitial ?? undefined}
-        />
+        <>
+          {/* Beide Schritte bleiben gemountet (s. Modul-Kommentar):
+              State-Zwischenspeicherung bei "Weiter" -> "Zurück". */}
+          <div className={step === 1 ? undefined : 'hidden'}>
+            <AttackForm
+              onNext={handleBaseNext}
+              title={isEditMode ? 'Attacke bearbeiten' : 'Neue Attacke erfassen'}
+              initialStartTime={initialAttack?.startTime}
+              initialIsEnded={initialAttack?.endTime != null}
+              initialEndTime={initialAttack?.endTime ?? undefined}
+              initialPainLevel={initialAttack?.painLevel}
+              initialPainEntries={initialPainEntries ?? undefined}
+              initialLocation={initialLocation}
+            />
+          </div>
+          <div className={step === 2 ? undefined : 'hidden'}>
+            <AttackDetailsForm
+              onSubmit={handleDetailsSubmit}
+              onBack={handleDetailsBack}
+              submitLabel="Speichern"
+              isSubmitting={isSubmitting}
+              initialData={detailsInitial ?? undefined}
+            />
+          </div>
+        </>
       )}
 
       {errorMessage && (

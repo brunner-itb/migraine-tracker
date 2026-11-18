@@ -39,7 +39,12 @@ export interface MigraineAttack {
   /** Endzeit – komplett optional. null = offene/laufende Attacke. */
   endTime: string | null;
 
-  /** Schmerzstärke zum Start: 1–10. */
+  /**
+   * Schmerzstärke zum Startzeitpunkt (t_0): 1–10.
+   * Der „Gesamtschmerz“ (Peak) für Journal-Liste, Statistik und Bericht
+   * wird auf der Leserseite aus diesem Wert + painEntries abgeleitet
+   * (s. utils/pain.ts) und NICHT separat gespeichert.
+   */
   painLevel: number;
 
   /** Art der Attacke. */

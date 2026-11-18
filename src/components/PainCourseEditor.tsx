@@ -5,7 +5,9 @@
  * Parent (AttackForm, Wizard-Schritt 1). Eingabe = Liste + Zeitpicker +
  * 1–10-Auswahl
  * (bewusst KEIN Graph als Eingabe). Der Graph ist nur Anzeige
- * (PainCourseChart).
+ * (PainCourseChart). Der "+ Zeitpunkt"-Button sitzt unter der Liste:
+ * Neue Einträge erscheinen direkt über ihm, so lassen sich mehrere
+ * Zeitpunkte hintereinander erfassen, ohne nach oben zu scrollen.
  */
 
 import { PainCourseChart } from './PainCourseChart';
@@ -103,23 +105,11 @@ export function PainCourseEditor({
 
   return (
     <section className="flex flex-col gap-3">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-sm font-medium text-gray-700">Schmerzverlauf</h2>
-          <p className="text-xs text-gray-500">
-            Optional: Schmerzstärke zu späteren Zeitpunkten der Attacke.
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={addEntry}
-          className="flex min-h-11 items-center rounded-lg border border-sky-300 bg-sky-50
-                     px-3 text-sm font-medium text-sky-700
-                     transition-colors hover:bg-sky-100
-                     focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
-        >
-          + Zeitpunkt
-        </button>
+      <div>
+        <h2 className="text-sm font-medium text-gray-700">Schmerzverlauf</h2>
+        <p className="text-xs text-gray-500">
+          Optional: Schmerzstärke zu späteren Zeitpunkten der Attacke.
+        </p>
       </div>
 
       {entries.length > 0 && (
@@ -183,10 +173,25 @@ export function PainCourseEditor({
         </ul>
       )}
 
+      {/* Add-Button unter der Liste: der neue Eintrag erscheint direkt
+          darüber, weitere Zeitpunkte ohne Hochscrollen erfassbar. */}
+      <button
+        type="button"
+        onClick={addEntry}
+        className="flex min-h-11 w-full items-center justify-center rounded-xl border border-sky-300 bg-sky-50
+                   text-sm font-medium text-sky-700
+                   transition-colors hover:bg-sky-100
+                   focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
+      >
+        + Zeitpunkt
+      </button>
+
       {entries.length > 0 && (
         <p className="text-xs text-gray-500">
-          Gespicher wird der höchste Wert als Gesamtschmerz (aktuell {peak}/10).
-          Die Statistik nutzt diesen Peak.
+          Gesamtschmerz (Peak): {peak}/10 – der höchste Wert aus
+          Start-Schmerzstärke und Verlauf. Liste, Statistik und Bericht
+          nutzen diesen Peak; der Start-Schmerz bleibt unverändert
+          gespeichert.
         </p>
       )}
     </section>

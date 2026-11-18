@@ -2,6 +2,7 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { db } from '../db/database';
 import type { MigraineAttack } from '../db/types';
+import { attackPeakPain, entryPeakByAttack } from '../utils/pain';
 
 // Helper für einheitliche Zahlen-Formatierung
 const formatNumber = (num: number, digits = 1) => 
@@ -24,11 +25,22 @@ export async function exportMonthlyReport(
   ]);
 
   const medsMap = new Map(meds.map((m) => [m.id, m]));
+  // attackId -> höchster Verlaufswert; `painLevel` in der DB ist der
+  // Start-Schmerz, der Bericht zeigt den Gesamtschmerz (Peak).
+  const peakByAttack = entryPeakByAttack(painEntries);
 
   // 2. Report-Metadaten
   const monthLabel = new Intl.DateTimeFormat('de-DE', { month: 'long', year: 'numeric' }).format(month);
   const avgPain = attacks.length > 0 
-    ? attacks.reduce((sum, a) => sum + a.painLevel, 0) / attacks.length 
+    ? attacks.reduce(
+        (sum, a) =>
+          sum +
+          attackPeakPain(
+            a.painLevel,
+            a.id !== undefined ? peakByAttack.get(a.id) : undefined,
+          ),
+        0,
+      ) / attacks.length 
     : 0;
 
   // 3. Zeilen für die Tabelle generieren
@@ -68,13 +80,18 @@ export async function exportMonthlyReport(
     });
 
     // Schmerzverlauf: Peak + Kurzzusammenfassung, z. B. "8 (8→5→2)".
+    // Peak = max(Start-Schmerz, Verlauf) – s. utils/pain.ts.
     const course = painEntries
       .filter((p) => p.attackId === attack.id)
       .sort((a, b) => a.time.localeCompare(b.time));
+    const painPeak = attackPeakPain(
+      attack.painLevel,
+      attack.id !== undefined ? peakByAttack.get(attack.id) : undefined,
+    );
     const painStr =
       course.length > 0
-        ? `${attack.painLevel} (${course.map((c) => c.level).join('→')})`
-        : attack.painLevel.toString();
+        ? `${painPeak} (${course.map((c) => c.level).join('→')})`
+        : painPeak.toString();
 
     return [
       dateStr.split('-').reverse().join('.'), // DD.MM.YYYY

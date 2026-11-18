@@ -341,10 +341,10 @@ export async function seedMockData(): Promise<SeedResult> {
       // 4b) ~50% der Attacken mit Schmerzverlauf (1–3 Einträge, abfallend)
       // ----------------------------------------------------------------
       if (chance(0.5)) {
-        const peak = attack.painLevel;
+        const startLevel = attack.painLevel;
         const entryCount = randInt(1, 3);
         let t = start.getTime() + randInt(30, 120) * 60_000;
-        let level = peak;
+        let level = startLevel;
         for (let k = 0; k < entryCount; k++) {
           if (t >= end.getTime()) break;
           if (k > 0) level = Math.max(1, level - randInt(1, 3));
