@@ -15,6 +15,7 @@
 import { db, type MigraineDB } from '../db/database';
 import type {
   CycleEvent,
+  FoodEntry,
   Medication,
   MedicationIntake,
   MigraineAttack,
@@ -23,8 +24,8 @@ import type {
   WeatherData,
 } from '../db/types';
 
-/** Export-Formatversion (für zukünftige Kompatibilität). */
-export const EXPORT_FORMAT_VERSION = 2;
+/** Export-Formatversion (für zukünftige Kompatibilität; v3: + foodEntries). */
+export const EXPORT_FORMAT_VERSION = 3;
 
 /** App-Kennung im Export (Schutz vor falschen Dateien). */
 const APP_ID = 'migraine-tracker';
@@ -36,6 +37,7 @@ const TABLE_KEYS = [
   'medications',
   'medicationIntakes',
   'painEntries',
+  'foodEntries',
   'weatherData',
   'settings',
 ] as const;
@@ -47,6 +49,7 @@ export interface ExportData {
   medications: Medication[];
   medicationIntakes: MedicationIntake[];
   painEntries: PainEntry[];
+  foodEntries: FoodEntry[];
   weatherData: WeatherData[];
   settings: UserSettings[];
 }
@@ -67,6 +70,7 @@ export interface ImportResult {
   medications: number;
   medicationIntakes: number;
   painEntries: number;
+  foodEntries: number;
   weatherData: number;
   settings: number;
 }
@@ -82,13 +86,14 @@ export interface ImportResult {
 export async function createDataExport(
   database: MigraineDB = db,
 ): Promise<DataExport> {
-  const [attacks, cycleEvents, medications, medicationIntakes, painEntries, weatherData, settings] =
+  const [attacks, cycleEvents, medications, medicationIntakes, painEntries, foodEntries, weatherData, settings] =
     await Promise.all([
       database.attacks.toArray(),
       database.cycleEvents.toArray(),
       database.medications.toArray(),
       database.medicationIntakes.toArray(),
       database.painEntries.toArray(),
+      database.foodEntries.toArray(),
       database.weatherData.toArray(),
       database.settings.toArray(),
     ]);
@@ -96,7 +101,7 @@ export async function createDataExport(
     app: APP_ID,
     version: EXPORT_FORMAT_VERSION,
     exportedAt: new Date().toISOString(),
-    data: { attacks, cycleEvents, medications, medicationIntakes, painEntries, weatherData, settings },
+    data: { attacks, cycleEvents, medications, medicationIntakes, painEntries, foodEntries, weatherData, settings },
   };
 }
 
@@ -166,10 +171,12 @@ export function parseDataExport(json: string): DataExport {
     throw new Error('Ungültige Export-Datei: Daten-Block fehlt.');
   }
   const dataObj = data as Record<string, unknown>;
-  // painEntries ist optional: Exports vor Version 2 kennen die Tabelle
-  // noch nicht und bleiben importierbar (werden leer übernommen).
+  // painEntries/foodEntries sind optional: Exports vor Version 2 kennen
+  // painEntries nicht, vor Version 3 foodEntries nicht – beide bleiben
+  // importierbar (werden leer übernommen).
+  const OPTIONAL_KEYS: readonly string[] = ['painEntries', 'foodEntries'];
   for (const key of TABLE_KEYS) {
-    if (key === 'painEntries') {
+    if (OPTIONAL_KEYS.includes(key)) {
       if (dataObj[key] !== undefined && !Array.isArray(dataObj[key])) {
         throw new Error(`Ungültige Export-Datei: Tabelle „${key}“ ist fehlerhaft.`);
       }
@@ -194,8 +201,10 @@ export async function importDataExport(
 ): Promise<ImportResult> {
   const { attacks, cycleEvents, medications, medicationIntakes, weatherData, settings } =
     exp.data;
-  // Optional: Exports vor Version 2 kennen die Tabelle noch nicht.
+  // Optional: Exports vor Version 2 kennen painEntries nicht, vor
+  // Version 3 foodEntries nicht.
   const painEntries = Array.isArray(exp.data.painEntries) ? exp.data.painEntries : [];
+  const foodEntries = Array.isArray(exp.data.foodEntries) ? exp.data.foodEntries : [];
 
   await database.transaction(
     'rw',
@@ -205,6 +214,7 @@ export async function importDataExport(
       database.medications,
       database.medicationIntakes,
       database.painEntries,
+      database.foodEntries,
       database.weatherData,
       database.settings,
     ],
@@ -215,6 +225,7 @@ export async function importDataExport(
         database.medications.clear(),
         database.medicationIntakes.clear(),
         database.painEntries.clear(),
+        database.foodEntries.clear(),
         database.weatherData.clear(),
         database.settings.clear(),
       ]);
@@ -233,6 +244,7 @@ export async function importDataExport(
         await database.medicationIntakes.bulkPut(medicationIntakes);
       }
       if (painEntries.length > 0) await database.painEntries.bulkPut(painEntries);
+      if (foodEntries.length > 0) await database.foodEntries.bulkPut(foodEntries);
       if (weatherData.length > 0) await database.weatherData.bulkPut(weatherData);
       if (settings.length > 0) await database.settings.bulkPut(settings);
     },
@@ -244,6 +256,7 @@ export async function importDataExport(
     medications: medications.length,
     medicationIntakes: medicationIntakes.length,
     painEntries: painEntries.length,
+    foodEntries: foodEntries.length,
     weatherData: weatherData.length,
     settings: settings.length,
   };

@@ -13,8 +13,10 @@ import {
 import type {
   ChartDataPoint,
   CycleCorrelationResult,
+  FoodAnalysisResult,
   PressureCorrelationResult,
 } from '../services/statisticsService';
+import { FOOD_CATEGORY_LABELS } from '../services/statisticsService';
 
 /**
  * StatisticsView – Statistiken-Ansicht (Schritt 5).
@@ -48,6 +50,8 @@ export interface StatisticsViewProps {
   pressureCorrelation: PressureCorrelationResult;
   /** Ergebnis von analyzeCycleCorrelation(). */
   cycleCorrelation: CycleCorrelationResult;
+  /** Ergebnis von analyzeFoodCorrelation(). */
+  foodAnalysis: FoodAnalysisResult;
 }
 
 // ---------------------------------------------------------------------------
@@ -58,6 +62,7 @@ export interface StatisticsViewProps {
 const PAIN_COLOR = '#f43f5e'; // rose-500
 const PMS_COLOR = '#a855f7'; // purple-500
 const PRESSURE_COLOR = '#0ea5e9'; // sky-500
+const FOOD_COLOR = '#f59e0b'; // amber-500
 
 // ---------------------------------------------------------------------------
 // Hauptkomponente
@@ -67,6 +72,7 @@ export function StatisticsView({
   chartData,
   pressureCorrelation,
   cycleCorrelation,
+  foodAnalysis,
 }: StatisticsViewProps) {
   return (
     <section aria-label="Statistiken" className="flex flex-col gap-4">
@@ -85,6 +91,9 @@ export function StatisticsView({
           meta={correlationMeta(cycleCorrelation.r, cycleCorrelation.n, 'r')}
         />
       </div>
+
+      {/* Food-Karte: volle Breite (enthält die Pro-Kategorie-Liste) */}
+      <FoodCard analysis={foodAnalysis} />
 
       {/* Chart */}
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -225,6 +234,68 @@ function InfoCard({ title, accent, summary, meta }: InfoCardProps) {
       <p className="mt-2 text-xs text-slate-400">{meta}</p>
     </article>
   );
+}
+
+interface FoodCardProps {
+  analysis: FoodAnalysisResult;
+}
+
+/** Karte „Ernährung & Migräne“: Summary + Pro-Kategorie-Liste. */
+function FoodCard({ analysis }: FoodCardProps) {
+  return (
+    <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex items-center gap-2">
+        <span
+          aria-hidden
+          className="h-2.5 w-2.5 shrink-0 rounded-full"
+          style={{ backgroundColor: FOOD_COLOR }}
+        />
+        <h3 className="text-sm font-semibold text-slate-700">
+          Ernährung &amp; Migräne
+        </h3>
+      </div>
+      <p className="mt-2 text-sm leading-relaxed text-slate-600">
+        {analysis.summary}
+      </p>
+      {analysis.results.length === 0 ? (
+        <p className="mt-2 text-xs text-slate-400">
+          Noch keine Einträge – erfasse Lebensmittel im Tab „Ernährung“,
+          um eine Auswertung zu sehen.
+        </p>
+      ) : (
+        <ul className="mt-3 flex flex-col gap-1.5">
+          {analysis.results.map((r) => (
+            <li
+              key={r.category}
+              className="flex items-baseline justify-between gap-3 text-sm"
+            >
+              <span className="shrink-0 text-slate-700">
+                {FOOD_CATEGORY_LABELS[r.category]}
+              </span>
+              <span
+                className={`text-right text-xs font-medium ${foodRateClass(r.rateDifference)}`}
+              >
+                {r.nAttacksExposed}/{r.nAttacks} Attacken vs.{' '}
+                {r.nOtherDaysExposed}/{r.nOtherDays} andere Tage
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="mt-2 text-xs text-slate-400">
+        24-h-Fenster vor Attackenbeginn – Basis: {analysis.totalDays} erfasste
+        Tage, {analysis.totalEntries} Einträge
+      </p>
+    </article>
+  );
+}
+
+/** Farbe der Listen-Zeile: Exzess vor Attacken = rot, Defizit = grün. */
+function foodRateClass(diff: number | null): string {
+  if (diff === null) return 'text-slate-400';
+  if (diff > 0.05) return 'text-rose-600';
+  if (diff < -0.05) return 'text-emerald-600';
+  return 'text-slate-500';
 }
 
 interface ChartTooltipProps {

@@ -9,6 +9,9 @@
  *   - ~50% der Attacken mit 1–3 Schmerzverlauf-Einträgen (abfallend)
  *   - Wetterdaten für alle Attacken (via attackRepository.retryMissingWeather)
  *   - Menstruations-Events ca. alle 28 Tage (nur wenn `cycleEvents` leer ist)
+ *   - Lebensmittel-Einträge: ~60% der Attacken mit „Trigger“-Eintrag
+ *     2–20 h vor dem Start + ~50% der übrigen Tage mit Zufalls-Einträgen
+ *     (nur wenn `foodEntries` leer ist)
  *
  * Idempotenz: Jede Tabelle wird nur befüllt, wenn sie leer ist –
  * vorhandene (echte) Daten bleiben unverändert. Nach dem Seed lädt die
@@ -20,6 +23,7 @@ import { attackRepository } from '../repositories/attackRepository';
 import type {
   AttackType,
   EffectivenessScore,
+  FoodCategory,
   Medication,
   MigraineAttack,
 } from '../db/types';
@@ -35,6 +39,7 @@ export interface SeedResult {
   intakesAdded: number;
   painEntriesAdded: number;
   cycleEventsAdded: number;
+  foodEntriesAdded: number;
   /** Wetterabrufe, die nach dem Seed erfolgreich waren. */
   weatherFetched: number;
   /** Wetterabrufe, die fehlgeschlagen sind (Status 'error', Retry beim Start). */
@@ -129,6 +134,30 @@ const SIDE_EFFECTS: string[] = [
   'Leichte Übelkeit nach Einnahme',
 ];
 
+/** Namen pro Kategorie für den Seed (realistische DE-Beispiele). */
+const FOOD_POOL: Partial<Record<FoodCategory, string[]>> = {
+  alcohol: ['Rotwein', 'Bier', 'Sekt'],
+  cheese: ['Käse (Brie)', 'Käse (Parmesan)', 'Käsebrot'],
+  chocolate: ['Schokolade', 'Schokoladendessert'],
+  curedMeats: ['Schinken', 'Salami', 'Wurstbrot'],
+  processed: ['Fast Food', 'Fertiggericht', 'Pizza'],
+  caffeine: ['Kaffee', 'Tee', 'Energiedrink'],
+  sweet: ['Kuchen', 'Süßigkeiten'],
+  spicy: ['Scharfes Essen'],
+  gluten: ['Brot', 'Nudeln'],
+  lactose: ['Milch', 'Yoghurt', 'Eis'],
+  skippedMeal: ['Ausgefallene Mahlzeit'],
+  other: ['Obst', 'Suppe', 'Salat'],
+};
+
+/** Kategorien, die vor Attacken bevorzugt seeded werden („Trigger“). */
+const TRIGGER_CATEGORIES: FoodCategory[] = ['alcohol', 'cheese', 'chocolate', 'curedMeats'];
+
+/** Kategorien für „normale“ Tages-Einträge. */
+const NORMAL_CATEGORIES: FoodCategory[] = [
+  'caffeine', 'gluten', 'lactose', 'sweet', 'processed', 'other',
+];
+
 // ---------------------------------------------------------------------------
 // Standort für die Beispieldaten: fest Berlin (PC-Test ohne Geolocation)
 // ---------------------------------------------------------------------------
@@ -149,6 +178,7 @@ export async function seedMockData(): Promise<SeedResult> {
     intakesAdded: 0,
     painEntriesAdded: 0,
     cycleEventsAdded: 0,
+    foodEntriesAdded: 0,
     weatherFetched: 0,
     weatherFailed: 0,
     skippedExistingAttacks: false,
@@ -338,6 +368,68 @@ export async function seedMockData(): Promise<SeedResult> {
   const retry = await attackRepository.retryMissingWeather(coords);
   result.weatherFetched = retry.succeeded;
   result.weatherFailed = retry.failed;
+
+  // ------------------------------------------------------------------
+  // 6) Lebensmittel (nur wenn Tabelle leer):
+  //    - ~60% der Attacken: „Trigger“-Eintrag 2–20 h vor dem Start
+  //      (sichergestellt, dass das 24-h-Fenster getroffen wird)
+  //    - ~50% aller weiteren Tage: 1–2 Zufalls-Einträge (Normal-Kategorien)
+  //    Läuft auch bei vorhandenen Attacken (z. B. zweiter Seed-Versuch
+  //    nach Datenlöschung) – Bedingung ist foodEntries.count() === 0.
+  // ------------------------------------------------------------------
+  if ((await db.foodEntries.count()) === 0) {
+    const seededAttacks = await db.attacks.toArray();
+
+    // a) Trigger-Einträge vor ~60% der Attacken.
+    const daysWithEntry = new Set<string>();
+    for (const a of seededAttacks) {
+      if (!chance(0.6)) continue;
+      const start = new Date(a.startTime);
+      const t = new Date(start.getTime() - randInt(2, 20) * 3_600_000);
+      const cat = pick(TRIGGER_CATEGORIES);
+      const names = FOOD_POOL[cat] ?? [];
+      await db.foodEntries.add({
+        date: toDateOnly(t),
+        time: toLocalISO(t).slice(11), // 'HH:mm'
+        name: names.length > 0 ? pick(names) : cat,
+        category: cat,
+        quantity: chance(0.3) ? `${randInt(1, 3)} Portion(en)` : '',
+        notes: '',
+        createdAt: nowIso,
+      });
+      daysWithEntry.add(toDateOnly(t));
+      result.foodEntriesAdded += 1;
+    }
+
+    // b) ~50% aller Tage der letzten 3 Monate mit 1–2 Zufalls-Einträgen.
+    for (let d = 89; d >= 0; d--) {
+      const day = new Date(now.getFullYear(), now.getMonth(), now.getDate() - d);
+      const dayOnly = toDateOnly(day);
+      if (daysWithEntry.has(dayOnly) || !chance(0.5)) continue;
+      const count = randInt(1, 2);
+      for (let k = 0; k < count; k++) {
+        const cat = pick(NORMAL_CATEGORIES);
+        const names = FOOD_POOL[cat] ?? [];
+        const t = new Date(
+          day.getFullYear(),
+          day.getMonth(),
+          day.getDate(),
+          randInt(8, 21),
+          randInt(0, 59),
+        );
+        await db.foodEntries.add({
+          date: dayOnly,
+          time: toLocalISO(t).slice(11),
+          name: names.length > 0 ? pick(names) : cat,
+          category: cat,
+          quantity: '',
+          notes: '',
+          createdAt: nowIso,
+        });
+        result.foodEntriesAdded += 1;
+      }
+    }
+  }
 
   console.info('[seedMockData] Ergebnis:', result);
   return result;

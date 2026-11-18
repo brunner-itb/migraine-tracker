@@ -7,6 +7,7 @@ import type {
   UserSettings,
   WeatherData,
   PainEntry,
+  FoodEntry,
 } from './types';
 
 /**
@@ -27,6 +28,9 @@ import type {
  *   für globale App-Einstellungen, z. B. festen Standort + GPS-Fallback.
  *
  *   painEntries.attackId -> attacks.id (logisch, Kaskade in attackRepository.deleteAttack)
+ *
+ *   foodEntries ist eigenständig (kein FK): tagesbasiertes
+ *   Lebensmittel-Log; Korrelation per 24-h-Fenster (statisticsService).
  */
 export class MigraineDB extends Dexie {
   attacks!: Table<MigraineAttack, number>;
@@ -36,6 +40,7 @@ export class MigraineDB extends Dexie {
   weatherData!: Table<WeatherData, number>;
   settings!: Table<UserSettings, number>;
   painEntries!: Table<PainEntry, number>;
+  foodEntries!: Table<FoodEntry, number>;
 
   constructor() {
     super('migraine-tracker');
@@ -71,6 +76,12 @@ export class MigraineDB extends Dexie {
     // Bestehende Tabellen werden von Dexie implizit übernommen.
     this.version(3).stores({
       painEntries: '++id, attackId, time',
+    });
+
+    // Version 4: Lebensmittel (Tagesbasis, eigenständig wie cycleEvents).
+    // Korrelation erfolgt rechnerisch per 24-h-Fenster (statisticsService).
+    this.version(4).stores({
+      foodEntries: '++id, date, category, [date+category]',
     });
   }
 }

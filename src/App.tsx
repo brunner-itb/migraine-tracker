@@ -7,6 +7,7 @@ import { StatisticsView } from './components/StatisticsView';
 import { exportMonthlyReport } from './components/ReportView';
 import {
   analyzeCycleCorrelation,
+  analyzeFoodCorrelation,
   analyzePressureCorrelation,
   getChartData,
 } from './services/statisticsService';
@@ -14,13 +15,15 @@ import { seedMockData } from './utils/generateMockData';
 import { attackRepository } from './repositories/attackRepository';
 import { settingsRepository } from './repositories/settingsRepository';
 import { SettingsView } from './components/SettingsView';
+import { FoodView } from './components/FoodView';
 import type {
   ChartDataPoint,
   CycleCorrelationResult,
+  FoodAnalysisResult,
   PressureCorrelationResult,
 } from './services/statisticsService';
 
-type Tab = 'journal' | 'stats' | 'report' | 'settings';
+type Tab = 'journal' | 'stats' | 'report' | 'settings' | 'food';
 
 const TYPE_LABELS: Record<MigraineAttack['type'], string> = {
   migraine: 'Migräne',
@@ -61,6 +64,8 @@ export default function App() {
     useState<PressureCorrelationResult | null>(null);
   const [cycleCorrelation, setCycleCorrelation] =
     useState<CycleCorrelationResult | null>(null);
+  const [foodAnalysis, setFoodAnalysis] =
+    useState<FoodAnalysisResult | null>(null);
 
   // Bericht
   const [reportMonth, setReportMonth] = useState(() => {
@@ -79,14 +84,16 @@ export default function App() {
   }, []);
 
   const loadStats = useCallback(async () => {
-    const [allAttacks, weather, cycles] = await Promise.all([
+    const [allAttacks, weather, cycles, foodEntries] = await Promise.all([
       db.attacks.toArray(),
       db.weatherData.toArray(),
       db.cycleEvents.toArray(),
+      db.foodEntries.toArray(),
     ]);
     setChartData(getChartData(allAttacks, weather, cycles));
     setPressureCorrelation(analyzePressureCorrelation(allAttacks, weather));
     setCycleCorrelation(analyzeCycleCorrelation(allAttacks, cycles));
+    setFoodAnalysis(analyzeFoodCorrelation(allAttacks, foodEntries));
   }, []);
 
   useEffect(() => {
@@ -292,17 +299,20 @@ export default function App() {
         )}
 
         {tab === 'stats' &&
-          (pressureCorrelation && cycleCorrelation ? (
+          (pressureCorrelation && cycleCorrelation && foodAnalysis ? (
             <StatisticsView
               chartData={chartData}
               pressureCorrelation={pressureCorrelation}
               cycleCorrelation={cycleCorrelation}
+              foodAnalysis={foodAnalysis}
             />
           ) : (
             <p className="mt-10 text-center text-sm text-gray-500">
               Statistik wird geladen …
             </p>
           ))}
+
+        {tab === 'food' && <FoodView />}
 
         {tab === 'settings' && <SettingsView />}
 
@@ -370,6 +380,7 @@ export default function App() {
             [
               ['journal', 'Journal'],
               ['stats', 'Statistik'],
+              ['food', 'Ernährung'],
               ['report', 'Bericht'],
               ['settings', 'Einstellungen'],
             ] as [Tab, string][]

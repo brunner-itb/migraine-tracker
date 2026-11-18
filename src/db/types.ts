@@ -232,6 +232,61 @@ export interface PainEntry {
 }
 
 // ---------------------------------------------------------------------------
+// Lebensmittel (Tagesbasis)
+// ---------------------------------------------------------------------------
+
+/**
+ * Feste Lebensmittel-Kategorien für die Korrelations-Analyse.
+ * Freitext-Namen sind zu variabel auswertbar; die Kategorie ist die
+ * Analyseeinheit (24-h-Fenster vor Attacken, s. statisticsService).
+ * 'other' = Auffangkategorie, 'skippedMeal' = ausgefallene Mahlzeit
+ * (Fasten \u2013 bekannter Trigger, der kein konkretes Lebensmittel ist).
+ */
+export type FoodCategory =
+  | 'alcohol'      // Alkohol (Wein, Bier, Sekt, \u2026)
+  | 'cheese'       // Käse (v. a. gereift)
+  | 'chocolate'    // Schokolade
+  | 'curedMeats'   // Gepökeltes/Schinken (Nitrite)
+  | 'processed'    // Stark verarbeitete Lebensmittel, Fast Food
+  | 'caffeine'     // Koffein (Kaffee, Tee, Cola, Energiedrinks)
+  | 'sweet'        // Soßen/Zucker/Süßstoffe
+  | 'spicy'        // Scharfes Essen
+  | 'gluten'       // Gluten/Weizen (Brot, Nudeln, \u2026)
+  | 'lactose'      // Milchprodukte/Laktose
+  | 'skippedMeal'  // Ausgefallene Mahlzeit / Fasten
+  | 'other';       // Sonstiges
+
+/**
+ * Ein erfasster Lebensmitteleintrag (Tagesbasis, eigenständig – KEIN FK
+ * zur Attacke, gleiche Semantik wie CycleEvent). Die Zuordnung zu
+ * Attacken erfolgt rechnerisch über das 24-h-Fenster vor dem
+ * Attacken-Start (analyzeFoodCorrelation in statisticsService).
+ */
+export interface FoodEntry {
+  id?: number;
+
+  /** Tag 'YYYY-MM-DD' (lokales Datum, gleiche Konvention wie cycleEvents). */
+  date: string;
+
+  /** Optionale Uhrzeit 'HH:mm' (Ortszeit). null = zeitpunktlos am Tag. */
+  time: string | null;
+
+  /** Freitext, z. B. 'Pizza', 'Rotwein'. */
+  name: string;
+
+  /** Kategorie = Analyseeinheit der Korrelation. */
+  category: FoodCategory;
+
+  /** Optionale Menge, Freitext, z. B. '2 Scheiben'. */
+  quantity: string;
+
+  /** Freitext, z. B. 'Mittagessen im Büro'. */
+  notes: string;
+
+  createdAt: string;
+}
+
+// ---------------------------------------------------------------------------
 // Einstellungen
 // ---------------------------------------------------------------------------
 

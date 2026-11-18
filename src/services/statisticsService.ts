@@ -1,5 +1,11 @@
 import { mean, sampleCorrelation } from 'simple-statistics';
-import type { CycleEvent, MigraineAttack, WeatherData } from '../db/types';
+import type {
+  CycleEvent,
+  FoodCategory,
+  FoodEntry,
+  MigraineAttack,
+  WeatherData,
+} from '../db/types';
 
 /**
  * statisticsService – reiner Statistik-Layer (Schritt 4).
@@ -28,6 +34,10 @@ import type { CycleEvent, MigraineAttack, WeatherData } from '../db/types';
  *    (relationPhrase) in den Text-Summaries beschrieben.
  *
  * 4) getChartData – DB-Modelle in ein flaches Array für Recharts.
+ *
+ * 5) analyzeFoodCorrelation – Exposure-Vergleich pro Lebensmittel-Kategorie
+ *    (24-h-Fenster vor Attacken-Start vs. erfasste Normaltage). Kein r-Wert,
+ *    sondern Anteile (Rates) + Differenz; s. Funktionskommentar.
  *
  * Randfälle: Bei n < MIN_N, fehlenden Werten oder Varianzlosigkeit
  * (konstanter Indikator/Schmerz) geben die Funktionen r = null zurück –
@@ -71,6 +81,41 @@ export interface CycleCorrelationResult {
   /** Differenz der Mittelwerte (Ereignistage − andere Tage); null, wenn eine Gruppe fehlt. */
   painDifference: number | null;
   /** Deutscher Text für Plot-Fußzeile / Arztbericht. */
+  summary: string;
+}
+
+/** Ergebnis pro Kategorie: Exposure im 24-h-Fenster vor Attacken
+ *  vs. erfasste andere (Normal-)Tage. */
+export interface FoodCorrelationResult {
+  category: FoodCategory;
+  /** Alle betrachteten Attacken (mit parsebarem Startdatum). */
+  nAttacks: number;
+  /** Attacken, bei denen die Kategorie im 24-h-Fenster vor Start auftrat. */
+  nAttacksExposed: number;
+  /** Erfasste Tage, die KEIN Attacken-Fenster berühren (Basisgruppe). */
+  nOtherDays: number;
+  /** Basis-Tage, an denen die Kategorie erfasst wurde. */
+  nOtherDaysExposed: number;
+  /** nAttacksExposed / nAttacks. null, wenn nAttacks = 0. */
+  attackRate: number | null;
+  /** nOtherDaysExposed / nOtherDays. null, wenn nOtherDays = 0. */
+  otherRate: number | null;
+  /** attackRate − otherRate; null, wenn eine Seite fehlt. Sortierkriterium. */
+  rateDifference: number | null;
+  /** Deutscher Einzeiler für die Karten-Zeile. */
+  summary: string;
+}
+
+/** Gesamtergebnis für die Karte „Ernährung & Migräne“. */
+export interface FoodAnalysisResult {
+  /** Kategorien mit ≥ 1 Eintrag, nach rateDifference absteigend
+   *  (Kategorien ohne auswertbare Differenz am Ende). */
+  results: FoodCorrelationResult[];
+  /** Gesamte Anzahl Food-Entries. */
+  totalEntries: number;
+  /** Anzahl erfasster (distinct) Tage. */
+  totalDays: number;
+  /** Einzeiler-Summary für die Karte. */
   summary: string;
 }
 
@@ -255,6 +300,182 @@ export function analyzeCycleCorrelation(
   };
 }
 
+// ---------------------------------------------------------------------------
+// Lebensmittel
+// ---------------------------------------------------------------------------
+
+/** Exposure-Fenster in Stunden vor dem Attacken-Start (fix, s. Plan). */
+export const FOOD_EXPOSURE_WINDOW_HOURS = 24;
+
+/** Mindestanzahl Attacken, damit eine Kategorie als auswertbar gilt. */
+const FOOD_MIN_N = 3;
+
+/** Deutsche Anzeigename je Kategorie (UI + Summary-Texte). */
+export const FOOD_CATEGORY_LABELS: Record<FoodCategory, string> = {
+  alcohol: 'Alkohol',
+  cheese: 'Käse',
+  chocolate: 'Schokolade',
+  curedMeats: 'Gepökeltes',
+  processed: 'Verarbeitet',
+  caffeine: 'Koffein',
+  sweet: 'Soßen',
+  spicy: 'Scharf',
+  gluten: 'Gluten/Weizen',
+  lactose: 'Milchprodukte',
+  skippedMeal: 'Ausgefallene Mahlzeit',
+  other: 'Sonstiges',
+};
+
+/** Alle Kategorien in Anzeigereihenfolge (für die UI-Auswahl). */
+export const FOOD_CATEGORIES = Object.keys(FOOD_CATEGORY_LABELS) as FoodCategory[];
+
+/**
+ * Lebensmittel-Analyse: Exposure-Vergleich pro Kategorie.
+ *
+ * Frage: Wie oft trat ein Lebensmittel (Kategorie) in den
+ * `FOOD_EXPOSURE_WINDOW_HOURS` (24 h) VOR dem Attacken-Start auf – im
+ * Vergleich zu erfassten anderen Tagen? (Auftretens-Frage, daher kein
+ * Point-Biserial wie bei Zyklus.)
+ *
+ * Definitionen:
+ *  - **Attacken-Exposition:** Es gibt einen Eintrag der Kategorie im
+ *    Fenster [startTime − 24 h … startTime]. Einträge OHNE Uhrzeit
+ *    werden auf Tagesebene verglichen (konservativ: Exposition, sobald
+ *    der Eintrags-Tag das Fenster berührt).
+ *  - **Basis-Tag:** ein erfasster Tag, den KEIN Attacken-Fenster
+ *    berührt (Tages-Overlap, konservativ). Damit landet derselbe
+ *    Eintrag nie in beiden Gruppen.
+ *  - **Auswertbar:** nAttacks ≥ FOOD_MIN_N.
+ *
+ * Limitierung (bewusst, in der Summary ausgedrückt): Die Basisgruppe
+ * sind die *erfassten* Normaltage, nicht alle Tage – bei spärlicher
+ * Erfassung ist der Vergleich relativ zur Erfassungs-Dichte.
+ */
+export function analyzeFoodCorrelation(
+  attacks: MigraineAttack[],
+  foodEntries: FoodEntry[],
+): FoodAnalysisResult {
+  const totalEntries = foodEntries.length;
+  const loggedDays = [...new Set(foodEntries.map((e) => e.date))];
+  if (totalEntries === 0) {
+    return {
+      results: [],
+      totalEntries: 0,
+      totalDays: 0,
+      summary: 'Noch keine Lebensmittel erfasst.',
+    };
+  }
+
+  // 1) Fenster pro Attacke (lokale ISO-Strings 'YYYY-MM-DDTHH:mm').
+  const windows: {
+    start: string;          // 'YYYY-MM-DDTHH:mm'
+    windowStart: string;    // 'YYYY-MM-DDTHH:mm'
+    windowStartDate: string; // 'YYYY-MM-DD'
+    attackDate: string;     // 'YYYY-MM-DD'
+  }[] = [];
+  for (const a of attacks) {
+    const start = new Date(a.startTime);
+    if (Number.isNaN(start.getTime())) continue; // defensiv
+    const startIso = localTimeOf(start)!;
+    const ws = new Date(start.getTime() - FOOD_EXPOSURE_WINDOW_HOURS * 3_600_000);
+    const wsIso = localTimeOf(ws)!;
+    windows.push({
+      start: startIso,
+      windowStart: wsIso,
+      windowStartDate: wsIso.slice(0, 10),
+      attackDate: startIso.slice(0, 10),
+    });
+  }
+
+  const nAttacks = windows.length;
+
+  // 2) Basis-Tage: erfasste Tage ohne Overlap mit einem Fenster.
+  const otherDays = loggedDays.filter(
+    (day) => !windows.some((w) => day >= w.windowStartDate && day <= w.attackDate),
+  );
+
+  // 3) Pro Kategorie (nur Kategorien mit ≥ 1 Eintrag).
+  const results: FoodCorrelationResult[] = (
+    [...new Set(foodEntries.map((e) => e.category))]
+  )
+    .map((category) => {
+      const nAttacksExposed = windows.filter((w) =>
+        foodEntries.some((e) => e.category === category && isExposed(e, w)),
+      ).length;
+      const nOtherDaysExposed = otherDays.filter((day) =>
+        foodEntries.some((e) => e.category === category && e.date === day),
+      ).length;
+
+      const attackRate = nAttacks > 0 ? nAttacksExposed / nAttacks : null;
+      const otherRate = otherDays.length > 0 ? nOtherDaysExposed / otherDays.length : null;
+      const rateDifference =
+        attackRate !== null && otherRate !== null ? attackRate - otherRate : null;
+
+      let summary: string;
+      if (nAttacks < FOOD_MIN_N) {
+        summary =
+          `Zu wenig Daten (n = ${nAttacks} Attacken, mindestens ${FOOD_MIN_N} nötig).`;
+      } else if (otherRate === null) {
+        summary =
+          `Bei ${nAttacksExposed} von ${nAttacks} Attacken in den 24 h vor dem Beginn – ` +
+          `keine Vergleichstage erfasst.`;
+      } else {
+        summary =
+          `Bei ${nAttacksExposed} von ${nAttacks} Attacken ` +
+          `(${Math.round((nAttacksExposed / nAttacks) * 100)}%) ` +
+          `vs. ${nOtherDaysExposed} von ${otherDays.length} anderen Tagen ` +
+          `(${Math.round(otherRate * 100)}%).`;
+      }
+
+      return {
+        category,
+        nAttacks,
+        nAttacksExposed,
+        nOtherDays: otherDays.length,
+        nOtherDaysExposed,
+        attackRate,
+        otherRate,
+        rateDifference,
+        summary,
+      };
+    })
+    .sort(
+      (a, b) =>
+        (b.rateDifference ?? Number.NEGATIVE_INFINITY) -
+        (a.rateDifference ?? Number.NEGATIVE_INFINITY),
+    );
+
+  // 4) Card-Summary: Kategorie mit stärkstem Exzess (Differenz > 0).
+  const top = results.find(
+    (r) => r.rateDifference !== null && r.rateDifference > 0,
+  );
+  const summary = top
+    ? `Häufigster Verdacht: ${FOOD_CATEGORY_LABELS[top.category]} ` +
+      `(${top.nAttacksExposed}/${top.nAttacks} Attacken vs. ` +
+      `${top.nOtherDaysExposed}/${top.nOtherDays} andere Tage, 24-h-Fenster). ` +
+      `Basis: ${otherDays.length} erfasste Normaltage.`
+    : `Keine Kategorie trat häufiger vor Attacken als an anderen Tagen auf ` +
+      `(${otherDays.length} erfasste Normaltage, ${nAttacks} Attacken).`;
+
+  return { results, totalEntries, totalDays: loggedDays.length, summary };
+}
+
+/**
+ * true, wenn der Eintrag im 24-h-Fenster [windowStart … start] der
+ * Attacke liegt. Mit Uhrzeit: exakter ISO-Vergleich. Ohne Uhrzeit:
+ * konservativer Tages-Overlap.
+ */
+function isExposed(
+  entry: FoodEntry,
+  w: { start: string; windowStart: string; windowStartDate: string; attackDate: string },
+): boolean {
+  if (entry.time !== null) {
+    const entryIso = `${entry.date}T${entry.time}`;
+    return entryIso >= w.windowStart && entryIso <= w.start;
+  }
+  return entry.date >= w.windowStartDate && entry.date <= w.attackDate;
+}
+
 /**
  * DB-Modelle in ein flaches Array für Recharts transformieren.
  * Ergebnis ist aufsteigend nach Startzeit sortiert.
@@ -360,6 +581,13 @@ function assignRanks(values: number[]): number[] {
 function localDateOf(iso: string): string | null {
   const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? null : d.toLocaleDateString('en-CA');
+}
+
+/** 'YYYY-MM-DDTHH:mm' in der Geräte-Zeitzone (null bei unparseablem Datum). */
+function localTimeOf(d: Date): string | null {
+  if (Number.isNaN(d.getTime())) return null;
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
 /**
