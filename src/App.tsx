@@ -51,6 +51,8 @@ function formatDate(iso: string): string {
 
 export default function App() {
   const [tab, setTab] = useState<Tab>('journal');
+  /** Letzter Tab vor „Einstellungen“ – Ziel des Zurück-Pfeils im Header. */
+  const [returnTab, setReturnTab] = useState<Tab>('journal');
   const [attacks, setAttacks] = useState<MigraineAttack[]>([]);
   // Schmerzverlauf-Einträge: für den abgeleiteten Gesamtschmerz (Peak)
   // in Badges/DIALOG – `painLevel` in der DB ist der Start-Schmerz.
@@ -155,6 +157,16 @@ export default function App() {
     }
   }
 
+  /**
+   * Öffnet die Einstellungen (Zahnrad oben rechts). iOS-Pattern: die
+   * Einstellungen sind kein Tab, sondern eine Push-View – zurück über
+   * den Chevron im Header (merkt sich den Quell-Tab).
+   */
+  function openSettings(): void {
+    if (tab !== 'settings') setReturnTab(tab);
+    setTab('settings');
+  }
+
   function openCreateWizard(): void {
     setEditTarget(null);
     setShowWizard(true);
@@ -212,9 +224,58 @@ export default function App() {
 
   return (
     <div className="flex min-h-full flex-col">
-      {/* Header */}
+      {/* Header: Titel links, Zahnrad oben rechts (öffnet die
+          Einstellungen in jedem Tab). Im Einstellungen-Tab zeigt statt
+          dessen Zurück-Chevron + Titel „Einstellungen“ (iOS-Pattern). */}
       <header className="sticky top-0 z-40 bg-indigo-600 px-4 pb-3 pt-4 text-white shadow-md [padding-top:max(1rem,env(safe-area-inset-top))]">
-        <h1 className="text-lg font-semibold">Migräne Tagebuch</h1>
+        <div className="flex items-center justify-between gap-2">
+          {tab === 'settings' ? (
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setTab(returnTab)}
+                aria-label="Zurück"
+                className="flex min-h-9 w-9 items-center justify-center rounded-lg hover:bg-white/10"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                  className="h-5 w-5"
+                  aria-hidden="true"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
+                </svg>
+              </button>
+              <h1 className="text-lg font-semibold">Einstellungen</h1>
+            </div>
+          ) : (
+            <>
+              <h1 className="text-lg font-semibold">Migräne Tagebuch</h1>
+              <button
+                type="button"
+                onClick={() => openSettings()}
+                aria-label="Einstellungen"
+                className="flex min-h-9 w-9 items-center justify-center rounded-lg hover:bg-white/10"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="h-5 w-5"
+                  aria-hidden="true"
+                >
+                  <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.72l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.72l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.72l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
+              </button>
+            </>
+          )}
+        </div>
       </header>
 
       {/* Inhalt */}
@@ -415,13 +476,13 @@ export default function App() {
               ['food', 'Ernährung'],
               ['stats', 'Statistik'],
               ['report', 'Bericht'],
-              ['settings', 'Einstellungen'],
             ] as [Tab, string][]
           ).map(([key, label]) => (
             <button
               key={key}
               type="button"
               onClick={() => setTab(key)}
+              aria-current={tab === key ? 'page' : undefined}
               className={`min-h-14 flex-1 text-sm font-medium ${
                 tab === key ? 'text-indigo-600' : 'text-gray-500'
               }`}
